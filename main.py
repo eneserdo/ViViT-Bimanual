@@ -1,0 +1,289 @@
+import glob
+import os
+import pickle
+import random
+import time
+import warnings
+from os.path import join as opj
+
+import matplotlib.pyplot as pyplot
+import matplotlib
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+
+import transformers
+import wandb
+from dataset import (ACTIONS, OBJECTS, RELATIONS,
+                     get_bimanual_dataset_splits)
+from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, visualize_incorrect_preds, wandb_logging)
+
+# from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
+
+
+
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+# # To fix the following error:
+# OSError: [Errno 24] Too many open files
+# Alternatively ulimit can be increased
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+# # An attempt to fix the following error:
+# XIO:  fatal IO error 25 (Inappropriate ioctl for device) on X server "localhost:10.0" after 2627 requests (2627 known processed) with 8 events remaining.
+pyplot.ioff()
+matplotlib.use('Agg')
+
+# To check for NaNs in the gradients
+torch.autograd.set_detect_anomaly(True)
+
+
+def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: int):
+    global step
+
+    if mode in ["test", "val"]:
+        model.eval()
+    elif mode == "train":
+        model.train()
+
+    # metrics = Metrics(len(ACTIONS), args.temporal_length, device, sample_dict, mode, args.weighted_mv)
+
+
+    for imgs, labels, idx in loader:
+        # labels: [left, right, left, right, ...]
+        # step += 1
+        if mode == "train":
+            optimizer.zero_grad()
+
+
+        # gt_reordered = torch.stack([torch.cat([d.y[::2], d.y[1::2]]) for d in data], dim=0)
+        # gt_reordered: [temporal_length, 2*batch_size(left, ..., left, right, ..., right) , num_classes]
+
+        # batch_size = gt_reordered.shape[1] // 2
+        # TODO: normalize, use hf functions
+        pred = model(imgs)
+
+        
+        # pred_flattened = pred.flatten(0, 1)
+        # gt_flattened = gt_reordered.flatten(0, 1)
+            
+        # label_loss = label_criterion(pred_flattened, gt_flattened)
+        
+        # Segmentation is currently removed
+        # loss = label_loss
+        
+        
+        if mode == "train":
+            # loss.backward()
+            # optimizer.step()
+            pass
+
+
+        if mode != "test" and args.save_individual:
+            # Visualize individiual predictions
+            raise NotImplementedError("save_individual may be broken due to global idx, please check it")
+            # VIP.pick_samples(y_true=gt_reordered.cpu().argmax(2), y_pred=pred.detach().cpu(), idx=idxes, epoch=epoch, mode=mode)
+
+
+        # step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), gt_reordered, idxes, padding_mask_reshaped)
+
+
+        # if mode != "test":
+        #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})
+
+        # if mode == "test" and args.save_incorrects:
+        #     raise NotImplementedError("save_incorrects may be broken, please check it")
+        #     visualize_incorrect_preds(pred_top_1, ground_truth, idxes, num_of_samples=4, 
+        #                                 test_idx_sample_mapping=dataset_mapping["test"]["sample"])
+        # if (step+1)%20==0:
+        #     print("20 BATCH ÇALIŞIYOR SADECE")
+        #     break
+
+    # End of for loop
+    
+    # metric_dict = metrics.compute()
+
+    # return metric_dict
+    return None
+
+
+def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
+    # Log everything for cross-validation 
+
+    cv_file = opj(save_dir, f"cross_validation_fold{args.test_subject}.pickle")
+    cv_list = []
+
+    comparison_metric=choose_best_in_terms_of
+    
+    weight_list=sorted(glob.glob(opj(save_dir, "*.pt")))
+
+    if len(weight_list) == 0:
+        return None
+    
+    best_metric = 0    
+    results = []
+    best_i = -1
+    for i, w_name in enumerate(weight_list):
+        print(f"TESTING {w_name}:")
+        checkpoint = torch.load(w_name)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        returned_dict = run_one_epoch(model, test_loader, 'test', epoch=int((w_name[-7:-3])))
+        cv_list.append(returned_dict)
+        
+        print(f'### TEST: ', metrics_to_str(returned_dict))
+
+        results.append(returned_dict)        
+        if best_metric < returned_dict[comparison_metric]:
+            best_metric = returned_dict[comparison_metric]
+            best_i = i
+
+    with open(cv_file, "wb") as f:
+        pickle.dump(cv_list, f)
+
+    print(f'### BEST: ', metrics_to_str(results[best_i]))
+    return results[best_i]
+
+
+if __name__ == "__main__":
+    args = arg_parser()
+    print("ARGS:\n", args)
+
+    # Make sure it is reproducible
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    # torch.use_deterministic_algorithms(mode=True, warn_only=True) # This throws an error
+    torch_generator = torch.Generator()
+    torch_generator.manual_seed(args.seed)
+
+    device = torch.device('cuda:' + str(args.gpu_id) if torch.cuda.is_available() else 'cpu')
+
+            
+    wandb.init(project="Bimanual-Baseline", name=args.name, config=args.__dict__,
+               mode="disabled" if args.disable_wandb else "online")
+
+
+    train_set, test_set, val_set = get_bimanual_dataset_splits(args)
+
+    # FIXME: increase num_workers
+    train_loader = DataLoader(train_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    test_loader = DataLoader(test_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    val_loader = DataLoader(val_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+
+    training_len = len(train_set)
+    val_len = len(val_set)
+
+    # model = make_model(args)
+    image_processor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
+    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400").to(device=device)
+    
+
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total trainable params: {total_params:_}")
+
+    wandb.watch(model, log='all')
+    wandb.define_metric("epoch")
+    wandb.define_metric("train/epoch*", step_metric="epoch")
+    wandb.define_metric("val/epoch*", step_metric="epoch")
+    wandb.define_metric("test/epoch*", step_metric="epoch")
+    wandb.define_metric("val/confusion_matrix*", step_metric="epoch")
+    wandb.define_metric("test/confusion_matrix*", step_metric="epoch")
+
+
+    if args.optimizer_type == 'SGD':
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum,
+                                    weight_decay=args.weight_decay)
+    else:
+        optimizer = getattr(torch.optim, args.optimizer_type)(model.parameters(), lr=args.learning_rate,
+                                                              weight_decay=args.weight_decay)
+
+
+    if args.scheduler_step_size != -1:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.scheduler_step_size,
+                                                    gamma=args.scheduler_gamma, verbose=True)
+        
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.scheduler_gamma, patience=4, verbose=True)
+
+
+    # loss weights can be used to balance the classes using different strategies
+    loss_weights = get_loss_weights(args.weighted_loss, None) # FIXME
+
+    label_criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
+
+
+    save_dir = f"saved_models/{args.name}"
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+
+    
+    # dataset_mapping contains mapping for each sample to its location in the videos. 
+    # Also, a mapping from video to ground truth action labels
+    with open(f"data/sample_dict_fold{args.test_subject}.pickle", "rb") as f:
+        sample_dict = pickle.load(f)
+
+
+    if args.save_individual:
+        raise NotImplementedError("save_individual may be broken, please check it")
+        VIP = VisIndividualPreds(20, training_len, val_len, save_dir)
+
+
+    # if args.temporal_length == -1:
+    #     MAX_VID_LEN = _get_max_length(args.root, args.downsample)
+
+    # STARTS TRAINING AND VALIDATION
+    print("Starts training...")
+
+    for epoch in range(args.num_epochs):
+        start = time.perf_counter()
+
+        train_metrics = run_one_epoch(model, train_loader, 'train', epoch)
+        wandb_logging(wandb, train_metrics, epoch, "train", whole_mode=args.temporal_length == -1)
+        
+        val_metrics = run_one_epoch(model, val_loader, 'val', epoch)
+        wandb_logging(wandb, val_metrics, epoch, "val", whole_mode=args.temporal_length == -1)
+
+        # Save model
+        if epoch % args.saving_freq == 0 or epoch ==  args.num_epochs - 1:
+            torch.save({"model_state_dict": model.state_dict(), 
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "scheduler_state_dict": scheduler.state_dict()},
+                        opj(save_dir, f"model_epoch{epoch:0>4}.pt"))
+
+
+        scheduler.step()
+        stop = time.perf_counter()
+
+        print(f'### {epoch:03d}: Time {get_minutes(stop - start)} m ### Train: ', metrics_to_str(train_metrics), ' ### Val: ', metrics_to_str(val_metrics))
+
+
+    # save the individual predictions
+    if args.save_individual:
+        raise NotImplementedError("save_individual may be broken, please check it")
+        VIP.save()
+
+    # TEST
+    print("Starts test...")
+
+    choose_best_in_terms_of = "f1_top1_once" if args.temporal_length != -1 else "f1_top1"
+    test_metrics = test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of=choose_best_in_terms_of)
+    
+    if test_metrics is None:
+        print("[WARN] No weights found to test")
+    else:
+        wandb_logging(wandb, test_metrics, epoch, "test", whole_mode=args.temporal_length == -1)
+    
+    wandb.finish()
+    
+    # To prevent CUDA memory errors during consecutive runs
+    try:
+        torch.cuda.empty_cache()
+    except RuntimeError as e:
+        if "out of memory" in str(e):
+            time.sleep(5)
+        else:
+            raise e
