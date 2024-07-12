@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+import transformers
 
 # Global variables
 OBJECTS = [
@@ -141,7 +142,8 @@ def _get_actions_list(gt_action_json: os.PathLike, act_len: int) -> np.ndarray:
 
 class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, split: str):
-
+        
+        self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         self.split = split
         self.test_subject = args.test_subject
         self.validation_take = args.validation_take
@@ -164,14 +166,14 @@ class BimanualDataset(Dataset):
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
             img = np.array(Image.open(path))
-            img = torch.tensor(img) # FIXME: if normalization is needed, move this to transforms
             imgs.append(img)
         
         assert len(imgs) == CLIP_LEN == len(labels)
 
 
-        imgs = torch.stack(imgs)
-        labels = torch.tensor(labels)
+        # imgs = torch.stack(imgs)
+        imgs = self.preprocessor(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
+        labels = torch.tensor(labels, dtype=torch.long)
 
         return imgs, labels, idx
 

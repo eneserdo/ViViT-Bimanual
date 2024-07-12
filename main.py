@@ -16,10 +16,10 @@ import transformers
 import wandb
 from dataset import (ACTIONS, OBJECTS, RELATIONS,
                      get_bimanual_dataset_splits)
+from model import FramewiseHead
 from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, visualize_incorrect_preds, wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
-
 
 
 
@@ -52,33 +52,33 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
 
     for imgs, labels, idx in loader:
-        # labels: [left, right, left, right, ...]
+        # labels.shape: [batch_size, 32, 2]
+        
         # step += 1
         if mode == "train":
             optimizer.zero_grad()
 
 
-        # gt_reordered = torch.stack([torch.cat([d.y[::2], d.y[1::2]]) for d in data], dim=0)
-        # gt_reordered: [temporal_length, 2*batch_size(left, ..., left, right, ..., right) , num_classes]
-
         # batch_size = gt_reordered.shape[1] // 2
-        # TODO: normalize, use hf functions
-        pred = model(imgs)
+        imgs = imgs.to(device)
+        labels = labels.to(device)
+        
+        labels = labels[:, ::2, :]
 
-        
-        # pred_flattened = pred.flatten(0, 1)
-        # gt_flattened = gt_reordered.flatten(0, 1)
-            
-        # label_loss = label_criterion(pred_flattened, gt_flattened)
-        
-        # Segmentation is currently removed
-        # loss = label_loss
+        # labels.shape: [batch_size, 16, 2]
+        labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0).flatten()
+        # labels.shape: [batch_size*2, 16] -> [batch_size*2*16]
+
+        pred = model(imgs).pooler_output
+
+        pred = pred.flatten(0, 1)
+
+        loss = criterion(pred, labels)
         
         
         if mode == "train":
-            # loss.backward()
-            # optimizer.step()
-            pass
+            loss.backward()
+            optimizer.step()
 
 
         if mode != "test" and args.save_individual:
@@ -177,10 +177,10 @@ if __name__ == "__main__":
     training_len = len(train_set)
     val_len = len(val_set)
 
-    # model = make_model(args)
-    image_processor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400").to(device=device)
-    
+    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400",
+                                                    ).to(device=device)
+    model.pooler = FramewiseHead(len(ACTIONS)).to(device=device)
+
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total trainable params: {total_params:_}")
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     # loss weights can be used to balance the classes using different strategies
     loss_weights = get_loss_weights(args.weighted_loss, None) # FIXME
 
-    label_criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
+    criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
 
 
     save_dir = f"saved_models/{args.name}"

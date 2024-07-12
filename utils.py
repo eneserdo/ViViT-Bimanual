@@ -35,7 +35,8 @@ def arg_parser_base():
     ap.add_argument("-vt", "--validation_take", type=int, default=7, choices=[i for i in range(10)], help="...")
 
     # Model
-    ap.add_argument("-bs", "--batch_size", type=int, default=16, help="...")
+    ap.add_argument("-bs", "--batch_size", type=int, default=1, help="...")
+    # ap.add_argument("-c", "--model-config", type=str, default="google/vivit-b-16x2-kinetics400")
     
     # Optimizer
     ap.add_argument("-o", "--optimizer_type", type=str,
