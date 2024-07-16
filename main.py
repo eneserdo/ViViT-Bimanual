@@ -47,39 +47,45 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         model.eval()
     elif mode == "train":
         model.train()
+    
+    loss_cumulative = 0
 
-    # metrics = Metrics(len(ACTIONS), args.temporal_length, device, sample_dict, mode, args.weighted_mv)
-
+    metrics = Metrics(args, len(ACTIONS), 32, device, gt_dict, sample_dict, mode)
+    
 
     for imgs, labels, idx in loader:
+        step += 1
+
+        imgs = imgs.to(device).half()
+        labels = labels.to(device)
         # labels.shape: [batch_size, 32, 2]
         
-        # step += 1
-        if mode == "train":
-            optimizer.zero_grad()
-
-
-        # batch_size = gt_reordered.shape[1] // 2
-        imgs = imgs.to(device)
-        labels = labels.to(device)
-        
-        labels = labels[:, ::2, :]
-
+        # bc ViViT processes tokens as 16x16x2 tubelets. So, temporal precision is halved during the training. 
+        # But, to calculate the metrics, we will upsample the predictions to the original temporal resolution. 
+        labels = labels[:, ::2, :] 
         # labels.shape: [batch_size, 16, 2]
-        labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0).flatten()
-        # labels.shape: [batch_size*2, 16] -> [batch_size*2*16]
+        
+        labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
+        labels_flattened = labels.flatten()
+        # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
         pred = model(imgs).pooler_output
 
-        pred = pred.flatten(0, 1)
+        pred_flattened = pred.flatten(0, 1)
 
-        loss = criterion(pred, labels)
+        loss = criterion(pred_flattened, labels_flattened)
         
-        
+        loss_cumulative += loss.item()
+
         if mode == "train":
             loss.backward()
-            optimizer.step()
 
+            if (step % args.num_acc == 0) or (step == len(loader)):
+
+                # t=torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+                optimizer.step()
+
+                optimizer.zero_grad()
 
         if mode != "test" and args.save_individual:
             # Visualize individiual predictions
@@ -87,7 +93,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
             # VIP.pick_samples(y_true=gt_reordered.cpu().argmax(2), y_pred=pred.detach().cpu(), idx=idxes, epoch=epoch, mode=mode)
 
 
-        # step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), gt_reordered, idxes, padding_mask_reshaped)
+        step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
 
         # if mode != "test":
@@ -103,10 +109,12 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
     # End of for loop
     
-    # metric_dict = metrics.compute()
+    metric_dict = metrics.compute()
 
-    # return metric_dict
-    return None
+    loss_cumulative = loss_cumulative / (len(loader) / args.batch_size)
+
+    return metric_dict, loss_cumulative
+    # return None
 
 
 def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
@@ -129,10 +137,10 @@ def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
         print(f"TESTING {w_name}:")
         checkpoint = torch.load(w_name)
         model.load_state_dict(checkpoint["model_state_dict"])
-        returned_dict = run_one_epoch(model, test_loader, 'test', epoch=int((w_name[-7:-3])))
+        returned_dict, _ = run_one_epoch(model, test_loader, 'test', epoch=int((w_name[-7:-3])))
         cv_list.append(returned_dict)
         
-        print(f'### TEST: ', metrics_to_str(returned_dict))
+        print('### TEST: ', metrics_to_str(returned_dict))
 
         results.append(returned_dict)        
         if best_metric < returned_dict[comparison_metric]:
@@ -142,13 +150,17 @@ def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
     with open(cv_file, "wb") as f:
         pickle.dump(cv_list, f)
 
-    print(f'### BEST: ', metrics_to_str(results[best_i]))
+    print('### BEST: ', metrics_to_str(results[best_i]))
     return results[best_i]
 
 
 if __name__ == "__main__":
     args = arg_parser()
     print("ARGS:\n", args)
+
+    save_dir = f"saved_models/{args.name}"
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
 
     # Make sure it is reproducible
     random.seed(args.seed)
@@ -177,10 +189,16 @@ if __name__ == "__main__":
     training_len = len(train_set)
     val_len = len(val_set)
 
-    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400",
+    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400"
                                                     ).to(device=device)
     model.pooler = FramewiseHead(len(ACTIONS)).to(device=device)
 
+
+    model = model.half() # TODO make it parametric, also search for alternatives
+
+
+    torch.save({"model_state_dict": model.state_dict()}, 
+               opj(save_dir, f"model_epoch{0:0>4}.pt"))
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total trainable params: {total_params:_}")
@@ -216,15 +234,22 @@ if __name__ == "__main__":
     criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
 
 
-    save_dir = f"saved_models/{args.name}"
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
+
 
     
     # dataset_mapping contains mapping for each sample to its location in the videos. 
     # Also, a mapping from video to ground truth action labels
     with open(f"data/sample_dict_fold{args.test_subject}.pickle", "rb") as f:
         sample_dict = pickle.load(f)
+    
+    with open("data/gt_dict.pickle", "rb") as f:
+        gt_dict = pickle.load(f)
+    
+    # split gt_dict into train, val, test
+    gt_dict_train = {k: v for k, v in gt_dict.items() if k[0]!=str(args.test_subject) and k[2]!=str(args.validation_take)}
+    gt_dict_test = {k: v for k, v in gt_dict.items() if k[0]==str(args.test_subject)}
+    gt_dict_val = {k: v for k, v in gt_dict.items() if k[0]!=str(args.test_subject) and k[2]==str(args.validation_take)}
+    gt_dict = {"train": gt_dict_train, "test": gt_dict_test, "val": gt_dict_val}
 
 
     if args.save_individual:
@@ -232,20 +257,19 @@ if __name__ == "__main__":
         VIP = VisIndividualPreds(20, training_len, val_len, save_dir)
 
 
-    # if args.temporal_length == -1:
-    #     MAX_VID_LEN = _get_max_length(args.root, args.downsample)
 
     # STARTS TRAINING AND VALIDATION
+    step = 0
     print("Starts training...")
 
     for epoch in range(args.num_epochs):
         start = time.perf_counter()
 
-        train_metrics = run_one_epoch(model, train_loader, 'train', epoch)
-        wandb_logging(wandb, train_metrics, epoch, "train", whole_mode=args.temporal_length == -1)
+        train_metrics, _ = run_one_epoch(model, train_loader, 'train', epoch)
+        wandb_logging(wandb, train_metrics, epoch, "train")
         
-        val_metrics = run_one_epoch(model, val_loader, 'val', epoch)
-        wandb_logging(wandb, val_metrics, epoch, "val", whole_mode=args.temporal_length == -1)
+        val_metrics, val_loss = run_one_epoch(model, val_loader, 'val', epoch)
+        wandb_logging(wandb, val_metrics, epoch, "val")
 
         # Save model
         if epoch % args.saving_freq == 0 or epoch ==  args.num_epochs - 1:
@@ -255,7 +279,7 @@ if __name__ == "__main__":
                         opj(save_dir, f"model_epoch{epoch:0>4}.pt"))
 
 
-        scheduler.step()
+        scheduler.step(val_loss)
         stop = time.perf_counter()
 
         print(f'### {epoch:03d}: Time {get_minutes(stop - start)} m ### Train: ', metrics_to_str(train_metrics), ' ### Val: ', metrics_to_str(val_metrics))
@@ -269,7 +293,7 @@ if __name__ == "__main__":
     # TEST
     print("Starts test...")
 
-    choose_best_in_terms_of = "f1_top1_once" if args.temporal_length != -1 else "f1_top1"
+    choose_best_in_terms_of = "f1_top1_once"
     test_metrics = test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of=choose_best_in_terms_of)
     
     if test_metrics is None:

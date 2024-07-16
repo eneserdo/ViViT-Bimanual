@@ -19,7 +19,7 @@ from torchmetrics.classification import (MulticlassConfusionMatrix,
 
 from scipy.optimize import linear_sum_assignment
 
-from dataset import ACTIONS
+from dataset import ACTIONS, STRIDE
 # from metrics import f1_at_k_single_example
 # from visualization_utils import (plot_segmentation, plot_segmentation_partial,
 #                                  plot_segmentation_v2)
@@ -41,15 +41,16 @@ def arg_parser_base():
     # Optimizer
     ap.add_argument("-o", "--optimizer_type", type=str,
                     choices=["Adam", "AdamW", "NAdam", "RMSprop", "SGD"],
-                    help="Type of optimizer to be used  from torch.optim", default='Adam')
-    ap.add_argument("-lr", "--learning_rate", type=float, default=0.0005, help="...")
+                    help="Type of optimizer to be used  from torch.optim", default='SGD')
+    ap.add_argument("-lr", "--learning_rate", type=float, default=0.01, help="...")
     ap.add_argument("-mn", "--momentum", type=float, default=0.9, help="...")
-    ap.add_argument("-wd", "--weight_decay", type=float, default=0.0005, help="...")
+    ap.add_argument("-wd", "--weight_decay", type=float, default=0.0001, help="...")
     ap.add_argument("--scheduler_step_size", type=int, default=-1, help="...")
     ap.add_argument("--scheduler_gamma", type=float, default=0.5, help="...")
     ap.add_argument("--weighted_loss", type=str, default="none", choices=["none", "inv", "sqrt_inv", "effective"],
                     help="Use class frequencies as weight for loss function")       # :(
     ap.add_argument("--smoothing", type=float, default=0.0, help="Label smoothing weight")
+    ap.add_argument("--num_acc", type=int, default=1, help="Number of accumulations before backward")
 
     # Metrics
     ap.add_argument("--weighted_mv", type=str, default="none", choices=["none", "w1", "w2", "auto"], help="...")
@@ -63,6 +64,7 @@ def arg_parser_base():
     ap.add_argument("--save_incorrects",action="store_true", help="saves some incorrect samples")
     ap.add_argument("--save_individual",action="store_true", help="Visualize individual segment predictions")
     ap.add_argument("--save_segments",action="store_true", help="Visualize final predictions for whole video")
+    ap.add_argument("--saving_freq", type=int, default=2, help="...")
 
     # Others
     ap.add_argument("--gpu_id", type=int, default=0, help="...")
@@ -565,22 +567,25 @@ def majority_voting(arr, total_len, buffer_len, weighted):
 def combine_predictions(all_arr, idx, sub_arr, mapping):
     # first half of sub_arr is for left hand, second half is for right hand
     
-    batch_size = sub_arr.shape[1]
-    assert 2*len(idx) == batch_size, f"2*idx and sub_arr must have same shape: {2*len(idx)} != {batch_size}"
+    sub_arr = sub_arr.repeat(2, axis=1) # upsample, bc we have a tubelet shape of 16x16x2 (h, w, t) 
 
-    left_arr , right_arr = sub_arr[:, :batch_size//2], sub_arr[:, batch_size//2:]
+    double_bs = sub_arr.shape[0]
+    assert 2*len(idx) == double_bs, f"2*idx and sub_arr must have same shape: {2*len(idx)} != {double_bs}"
+
+    left_arr , right_arr = sub_arr[:double_bs//2, :], sub_arr[double_bs//2:, :]
 
     for half_arr, hand in zip([left_arr, right_arr], ["L", "R"]):
         for j in range(len(idx)):
-            p = half_arr[:, j]
+            p = half_arr[j]
             i = idx[j]
 
-            subject, task, take, start_frame, end_frame, is_mirrored = mapping[i]
+            subject, task, take, start_frame, act = mapping[i]
 
             # end frame exclusive i.e. [start_frame, end_frame)
-            temp_len = end_frame-start_frame
+            start_frame = start_frame // STRIDE
+            temp_len = 32 # FIXME: hardcoded
 
-            all_arr[f"{subject}{task}{take}{is_mirrored}{hand}"][temp_len * start_frame : temp_len * (1+start_frame)] = p
+            all_arr[f"{subject}{task}{take}{hand}"][temp_len * start_frame : temp_len * (1+start_frame)] = p
     
     return all_arr
 
@@ -593,44 +598,47 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
     f1_classic = MulticlassF1Score(num_classes=num_classes, average='macro')
     conf_mat = MulticlassConfusionMatrix(num_classes=num_classes, normalize="true")
 
-    
-    if save_dir is not None:
-        if os.path.exists(save_dir):
-            shutil.rmtree(save_dir)
-        os.makedirs(save_dir)
+        
+    # if save_dir is not None:
+    #     if os.path.exists(save_dir):
+    #         shutil.rmtree(save_dir)
+    #     os.makedirs(save_dir)
 
     for video_id, y_true_LR in mapping.items():
 
         y_true_L, y_true_R = y_true_LR[:, 0], y_true_LR[:, 1]  
         
-        y_pred__L_all = all_arr[f"{video_id}_L"]
-        y_pred__R_all = all_arr[f"{video_id}_R"]
-        y_pred_ML_all = all_arr[f"{video_id}ML"]
-        y_pred_MR_all = all_arr[f"{video_id}MR"]
+        y_pred_L_all = all_arr[f"{video_id}L"]
+        y_pred_R_all = all_arr[f"{video_id}R"]
 
-        for y_pred_ in [y_pred__L_all, y_pred__R_all, y_pred_ML_all, y_pred_MR_all]:
+
+        for y_pred_ in [y_pred_L_all, y_pred_R_all]:
             assert -1 not in y_pred_, "Not filled appropriately. There should not be -1 in y_pred"
 
-        y_pred__L, conf_L = majority_voting(y_pred__L_all, total_len=y_true_L.shape[0], buffer_len=temporal_length, weighted=weighted_mv)
-        y_pred__R, conf_R = majority_voting(y_pred__R_all, total_len=y_true_R.shape[0], buffer_len=temporal_length, weighted=weighted_mv)
-        y_pred_ML, conf_ML = majority_voting(y_pred_ML_all, total_len=y_true_L.shape[0], buffer_len=temporal_length, weighted=weighted_mv)
-        y_pred_MR, conf_MR = majority_voting(y_pred_MR_all, total_len=y_true_R.shape[0], buffer_len=temporal_length, weighted=weighted_mv)
+        y_pred__L, conf_L = majority_voting(y_pred_L_all, total_len=y_true_L[::STRIDE].shape[0], buffer_len=temporal_length, weighted=weighted_mv)
+        y_pred__R, conf_R = majority_voting(y_pred_R_all, total_len=y_true_R[::STRIDE].shape[0], buffer_len=temporal_length, weighted=weighted_mv)
+        
+
+        y_pred__L = y_pred__L.repeat(2, axis=0) # upsample
+        y_pred__R = y_pred__R.repeat(2, axis=0) # upsample
+
+        if len(y_true_L) - len(y_pred__L) == 0:
+            pass
+        elif len(y_true_L) - len(y_pred__L) == 1:
+            y_true_L = y_true_L[:-1]
+            y_true_R = y_true_R[:-1]
+        else:
+            raise ValueError("Lengths must be equal or one less")
         
         
         # Notice that the convention is (y_true, y_pred)
         f1_at_k(y_true_L, y_pred__L)
         f1_at_k(y_true_R, y_pred__R)
-        
-        # Mirrored data
-        f1_at_k(y_true_R, y_pred_ML)
-        f1_at_k(y_true_L, y_pred_MR)
-        
+                
         
         # Notice that the convention is (y_pred, y_true)
         f1_classic(torch.tensor(y_pred__L), torch.tensor(y_true_L))
         f1_classic(torch.tensor(y_pred__R), torch.tensor(y_true_R))
-        f1_classic(torch.tensor(y_pred_ML), torch.tensor(y_true_R))
-        f1_classic(torch.tensor(y_pred_MR), torch.tensor(y_true_L))
 
         # Conf mat
         # To ignore warnings about nan values in confusion matrix and functorch's performance drop
@@ -638,10 +646,7 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
             warnings.filterwarnings('ignore', '.*NaN values found in confusion matrix.*', UserWarning)
 
             conf_mat(torch.tensor(y_pred__L), torch.tensor(y_true_L))
-            conf_mat(torch.tensor(y_pred__R), torch.tensor(y_true_R))
-            conf_mat(torch.tensor(y_pred_ML), torch.tensor(y_true_R))
-            conf_mat(torch.tensor(y_pred_MR), torch.tensor(y_true_L))
-        
+            conf_mat(torch.tensor(y_pred__R), torch.tensor(y_true_R))        
         
         # Visualization
         # FIXME
@@ -753,54 +758,45 @@ def get_loss_weights(weighted_loss_type, distribution):
 
 
 class Metrics:
-    def __init__(self, num_classes, temporal_length, device, dataset_mapping, mode, seg_save_dir, weighted_mv) -> None:
+    def __init__(self, args, num_classes, temp_len, device, gt_dict, sample_dict, mode) -> None:
         
-        self.dataset_mapping = dataset_mapping
+        self.gt_dict = gt_dict
+        self.sample_dict = sample_dict
         self.mode = mode
-        self.temporal_length = temporal_length
-        self.seg_save_dir = seg_save_dir 
-        self.weighted_mv = weighted_mv 
+        self.temp_len = temp_len
+        self.weighted_mv = args.weighted_mv 
+        
+        assert temp_len == 32
+
 
         # Window-based
         self.f1_top1 = MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device)
         self.f1_top3 = MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) # top_k is intentionally 1
 
-        # These are not really necessary
-        if temporal_length == -1:
-            self.conf_mat_top1_whole = MulticlassConfusionMatrix(num_classes=num_classes, normalize="true").to(device)
-            self.conf_mat_top3_whole = MulticlassConfusionMatrix(num_classes=num_classes, normalize="true").to(device)
         
         # Window-location-sensitive
-        if temporal_length != -1:
-            self.win_f1_calc_top1 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(temporal_length)]
-            self.win_f1_calc_top3 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(temporal_length)]
+        self.win_f1_calc_top1 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.temp_len//2)]
+        self.win_f1_calc_top3 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.temp_len//2)]
 
+
+        # filter gt_dict
 
         # After majority voting
         # Dictionaries to store predictions for each sample
         # We will also calculate F1 and CM after MV
-        if temporal_length != -1:
-            self.all_predictions_combined_top1 = {vid + m_and_hand_status: - np.ones((act.shape[0] - temporal_length + 1) * temporal_length) for vid, act in dataset_mapping[mode]["vid"].items() for m_and_hand_status in ["_L", "_R", "ML", "MR"]}
-            self.all_predictions_combined_top3 = {vid + m_and_hand_status: - np.ones((act.shape[0] - temporal_length + 1) * temporal_length) for vid, act in dataset_mapping[mode]["vid"].items() for m_and_hand_status in ["_L", "_R", "ML", "MR"]}
-        else:
-            self.f1_at_k = F1_at_k(num_classes=num_classes)
+        self.all_predictions_combined_top1 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.temp_len + 1) * self.temp_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
+        self.all_predictions_combined_top3 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.temp_len + 1) * self.temp_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
+        
 
+    def update(self, pred, gt, idxes):
+        # gt: [B*2, T/2]
+        # pred: [B*2, T/2, C]
 
-    def update(self, pred, gt_ohe, idxes, mask=None):
-        # gt_ohe: [T, B, C] (one hot encoded)
-        # pred: [T, B, C]
-
-        gt = gt_ohe.argmax(dim=-1)
         gt_flattened = gt.flatten(start_dim=0, end_dim=1)
-
         pred_flattened = pred.flatten(start_dim=0, end_dim=1)
 
-        if mask is not None:
-            gt_flattened = gt_flattened[~mask]
-            pred_flattened = pred_flattened[~mask]
-
         pred_top_3 = torch.argsort(pred_flattened, dim=-1, descending=True)[:, :3]
-        pred_top_1 = pred_top_3[:,0]
+        pred_top_1 = pred_top_3[:, 0]
 
         # This magical function ...
         with warnings.catch_warnings():
@@ -813,28 +809,18 @@ class Metrics:
         step_f1_top1 = self.f1_top1(pred_top_1, gt_flattened)
         step_f1_top3 = self.f1_top3(pred_top_3, gt_flattened)
 
-        if self.temporal_length == -1:
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', '.*NaN values found in confusion matrix have been replaced with zeros.*', UserWarning)
-                self.conf_mat_top1_whole(pred_top_1, gt_flattened)
-                self.conf_mat_top3_whole(pred_top_3, gt_flattened)
-            # for _ in range(idxes.shape[0]):
-            #     self.f1_at_k(, , segment_name="top1")
-            
 
+        pred_top_1_unf = pred_top_1.unflatten(0, (-1, self.temp_len//2)).cpu().numpy()
+        pred_top_3_unf = pred_top_3.unflatten(0, (-1, self.temp_len//2)).cpu().numpy()
 
-        if self.temporal_length != -1:
-            pred_top_1_unf = pred_top_1.unflatten(0, (self.temporal_length, -1))
-            pred_top_3_unf = pred_top_3.unflatten(0, (self.temporal_length, -1))
+        # Window-location-sensitive metrics
+        for i in range(self.temp_len//2):
+            self.win_f1_calc_top1[i](pred[:, i], gt[:, i])
+            self.win_f1_calc_top3[i](pred[:, i], gt[:, i])
 
-            # Window-location-sensitive metrics
-            for i in range(self.temporal_length):
-                self.win_f1_calc_top1[i](pred_top_1_unf[i, :], gt[i])
-                self.win_f1_calc_top3[i](pred_top_3_unf[i, :], gt[i])
-
-            # These are expects non-flattened tensors
-            combine_predictions(self.all_predictions_combined_top1, idxes.numpy(), pred_top_1_unf.cpu(), self.dataset_mapping[self.mode]["sample"])
-            combine_predictions(self.all_predictions_combined_top3, idxes.numpy(), pred_top_3_unf.cpu(), self.dataset_mapping[self.mode]["sample"])
+        # These are expects non-flattened tensors
+        combine_predictions(self.all_predictions_combined_top1, idxes.numpy(), pred_top_1_unf, self.sample_dict[self.mode])
+        combine_predictions(self.all_predictions_combined_top3, idxes.numpy(), pred_top_3_unf, self.sample_dict[self.mode])
 
         # Only these are matters (actually they don't but whatever)
         return step_f1_top1.cpu().item(), step_f1_top3.cpu().item()
@@ -842,46 +828,36 @@ class Metrics:
 
     def compute(self):
 
-        if self.temporal_length != -1:
-            f1_at_10, f1_at_25, f1_at_50, f1_top1_mv, cm_top1_mv = calc_metrics_at_once(self.all_predictions_combined_top1, 
-                                                                            self.dataset_mapping[self.mode]["vid"], 
-                                                                            num_classes=len(ACTIONS), 
-                                                                            temporal_length=self.temporal_length,
-                                                                            weighted_mv=self.weighted_mv,
-                                                                            save_dir=self.seg_save_dir)
+        f1_at_10, f1_at_25, f1_at_50, f1_top1_mv, cm_top1_mv = calc_metrics_at_once(self.all_predictions_combined_top1, 
+                                                                                    self.gt_dict[self.mode], 
+                                                                                    num_classes=len(ACTIONS), 
+                                                                                    temporal_length=self.temp_len,
+                                                                                    weighted_mv=self.weighted_mv,
+                                                                                    save_dir= None) # self.seg_save_dir
 
-            _, _, _, f1_top3_mv, cm_top3_mv = calc_metrics_at_once(self.all_predictions_combined_top3, 
-                                                                            self.dataset_mapping[self.mode]["vid"], 
-                                                                            num_classes=len(ACTIONS), 
-                                                                            temporal_length=self.temporal_length,
-                                                                            weighted_mv=self.weighted_mv,
-                                                                            save_dir=None)
+        _, _, _, f1_top3_mv, cm_top3_mv = calc_metrics_at_once(self.all_predictions_combined_top3, 
+                                                               self.gt_dict[self.mode], 
+                                                               num_classes=len(ACTIONS), 
+                                                               temporal_length=self.temp_len,
+                                                               weighted_mv=self.weighted_mv,
+                                                               save_dir=None)
 
-            self.win_f1_calc_top1_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top1]
-            self.win_f1_calc_top3_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top3]
+        self.win_f1_calc_top1_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top1]
+        self.win_f1_calc_top3_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top3]
 
-            ret = {
-                "f1_top1": self.f1_top1.compute().item(),
-                "f1_top3": self.f1_top3.compute().item(),
-                # "cm_top1": self.conf_mat_top1.compute().cpu(),
-                # "cm_top3": self.conf_mat_top3.compute().cpu(),
-                "f1_top1_once": f1_top1_mv,
-                "f1_top3_once": f1_top3_mv,
-                "cm_top1_once": cm_top1_mv,
-                "cm_top3_once": cm_top3_mv,
-                "f1@10": f1_at_10,
-                "f1@25": f1_at_25,
-                "f1@50": f1_at_50,
-                "win_f1_top1": self.win_f1_calc_top1_results,
-                "win_f1_top3": self.win_f1_calc_top3_results,
-            }
-        else:
-            ret = {
-                "f1_top1": self.f1_top1.compute().item(),
-                "f1_top3": self.f1_top3.compute().item(),
-                "cm_top1_once": self.conf_mat_top1_whole.compute().cpu(),
-                "cm_top3_once": self.conf_mat_top3_whole.compute().cpu(),
-            }
+        ret = {
+            "f1_top1": self.f1_top1.compute().item(),
+            "f1_top3": self.f1_top3.compute().item(),
+            "f1_top1_once": f1_top1_mv,
+            "f1_top3_once": f1_top3_mv,
+            "cm_top1_once": cm_top1_mv,
+            "cm_top3_once": cm_top3_mv,
+            "f1@10": f1_at_10,
+            "f1@25": f1_at_25,
+            "f1@50": f1_at_50,
+            "win_f1_top1": self.win_f1_calc_top1_results,
+            "win_f1_top3": self.win_f1_calc_top3_results,
+        }
         
         return ret 
 
@@ -894,29 +870,24 @@ def wandb_logging(wandb, metric_dict, epoch, mode, whole_mode=False):
     # Gathered all wandb logs here (except batch logs)
     # I think wabdb kind a have state, so I take it as an argument. But not tested otherwise.
 
-    if not whole_mode:
-        # Window-location-sensitive metrics: line plots
-        lplt1=plot_line(metric_dict["win_f1_top1"], f"{mode}_f1_top1_by_t", do_return_plot=True)
-        wandb.log({f"{mode}/f1_by_t": {'top1': wandb.Image(lplt1)}})
-        lplt1.close()
 
-        lplt3=plot_line(metric_dict["win_f1_top3"], f"{mode}_f1_top3_by_t", do_return_plot=True)
-        wandb.log({f"{mode}/f1_by_t": {'top3': wandb.Image(lplt3)}})
-        lplt3.close()
+    # Window-location-sensitive metrics: line plots
+    lplt1=plot_line(metric_dict["win_f1_top1"], f"{mode}_f1_top1_by_t", do_return_plot=True)
+    wandb.log({f"{mode}/f1_by_t": {'top1': wandb.Image(lplt1)}})
+    lplt1.close()
 
-        wandb.log({f"{mode}/epoch": {"f1@10": metric_dict["f1@10"], 
-                              "f1@25": metric_dict["f1@25"], 
-                              "f1@50": metric_dict["f1@50"], 
-                              "f1_top1_once": metric_dict["f1_top1_once"], 
-                              "f1_top3_once": metric_dict["f1_top3_once"],
-                              "f1_top1": metric_dict["f1_top1"],
-                              "f1_top3": metric_dict["f1_top3"]},
-                    "epoch": epoch})
-    else:
-        # TODO: add f1@k
-        wandb.log({f"{mode}/epoch": {"f1_top1": metric_dict["f1_top1"],
-                              "f1_top3": metric_dict["f1_top3"]},
-                   "epoch": epoch})
+    lplt3=plot_line(metric_dict["win_f1_top3"], f"{mode}_f1_top3_by_t", do_return_plot=True)
+    wandb.log({f"{mode}/f1_by_t": {'top3': wandb.Image(lplt3)}})
+    lplt3.close()
+
+    wandb.log({f"{mode}/epoch": {"f1@10": metric_dict["f1@10"], 
+                            "f1@25": metric_dict["f1@25"], 
+                            "f1@50": metric_dict["f1@50"], 
+                            "f1_top1_once": metric_dict["f1_top1_once"], 
+                            "f1_top3_once": metric_dict["f1_top3_once"],
+                            "f1_top1": metric_dict["f1_top1"],
+                            "f1_top3": metric_dict["f1_top3"]},
+                "epoch": epoch})
 
 
 
