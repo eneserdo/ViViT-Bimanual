@@ -181,10 +181,11 @@ if __name__ == "__main__":
 
     train_set, test_set, val_set = get_bimanual_dataset_splits(args)
 
-    # FIXME: increase num_workers
-    train_loader = DataLoader(train_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
-    test_loader = DataLoader(test_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
-    val_loader = DataLoader(val_set, args.batch_size, num_workers=0, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    # FIXME: increase num_workers from 0
+    num_workers = 3
+    train_loader = DataLoader(train_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    test_loader = DataLoader(test_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    val_loader = DataLoader(val_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
 
     training_len = len(train_set)
     val_len = len(val_set)
@@ -225,7 +226,7 @@ if __name__ == "__main__":
                                                     gamma=args.scheduler_gamma, verbose=True)
         
     else:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.scheduler_gamma, patience=4, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.scheduler_gamma, patience=args.patience, verbose=True)
 
 
     # loss weights can be used to balance the classes using different strategies

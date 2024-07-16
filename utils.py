@@ -51,6 +51,7 @@ def arg_parser_base():
                     help="Use class frequencies as weight for loss function")       # :(
     ap.add_argument("--smoothing", type=float, default=0.0, help="Label smoothing weight")
     ap.add_argument("--num_acc", type=int, default=1, help="Number of accumulations before backward")
+    ap.add_argument("--patience", type=int, default=2, help="patience for ReduceLROnPlateau scheduler")
 
     # Metrics
     ap.add_argument("--weighted_mv", type=str, default="none", choices=["none", "w1", "w2", "auto"], help="...")
