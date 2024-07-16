@@ -13,6 +13,15 @@ from torch.utils.data import Dataset
 import transformers
 
 # Global variables
+
+DEBUG_MODE = False
+
+DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
+assert os.path.exists(DATASET_DIR)
+
+STRIDE = 2
+CLIP_LEN = 32
+
 OBJECTS = [
     "bowl",
     "knife",
@@ -78,11 +87,7 @@ TASKS = [
     "task_9_w_sawing",
 ]
 
-DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
-assert os.path.exists(DATASET_DIR)
 
-STRIDE = 2
-CLIP_LEN = 32
 
 
 def crawl_dataset_FULL():
@@ -99,7 +104,7 @@ def crawl_dataset_DEBUG():
                 yield subject, task, take
 
 
-DEBUG_MODE = False
+
 
 if DEBUG_MODE:
     print("Debug mode is on\n" * 5)
@@ -134,20 +139,21 @@ def _get_actions_list(gt_action_json: os.PathLike, act_len: int) -> np.ndarray:
         left_act = actions_json["left_hand"][t + 1]
         end = actions_json["left_hand"][t + 2]
 
-        left_act = -1 if left_act == None else left_act
+        left_act = -1 if left_act is None else left_act
         actions_list[begin:end, 0] = left_act
 
     return actions_list
 
 
 class BimanualDataset(Dataset):
-    def __init__(self, args, sample_dict, split: str):
+    def __init__(self, args, sample_dict, gt_dict, split: str):
         
         self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         self.split = split
         self.test_subject = args.test_subject
         self.validation_take = args.validation_take
         self.sample_dict = sample_dict
+        self.gt_dict = gt_dict
         self.split_len = len(sample_dict)
 
     def __len__(self):
@@ -156,13 +162,15 @@ class BimanualDataset(Dataset):
     def __getitem__(self, idx):
 
         subject, task, take, frame_idx, _ = self.sample_dict[idx]
-        labels = np.zeros((CLIP_LEN, 2))
-        for i in range(CLIP_LEN):
-            _, _, _, _, act = self.sample_dict[idx + i]
-            labels[i]=act
+        
+        act_list = self.gt_dict[str(subject) + str(task) + str(take)]
+
+        labels = act_list[frame_idx:frame_idx+CLIP_LEN*STRIDE]
+        labels = labels[::STRIDE]
+
 
         imgs = []
-        for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE):
+        for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
             img = np.array(Image.open(path))
@@ -186,8 +194,6 @@ def make_mappings(args):
 
     sample_dict_master = {}  # sample_idx -> (subject, task, take, frame_idx)
     gt_dict = {}
-    STRIDE = 2
-    CLIP_LEN = 32
 
     sample_idx = 0
 
@@ -210,6 +216,8 @@ def make_mappings(args):
         frame_idx = 0
 
         for frame in frame_list[: -CLIP_LEN + 1]:
+            assert frame.split("_")[-1][:-4] == str(frame_idx)
+
             sample_dict_master[sample_idx] = (
                 subject_int,
                 task_int,
@@ -269,9 +277,12 @@ def get_bimanual_dataset_splits(args) -> Tuple[Dataset, Dataset, Dataset]:
 
     with open(f"data/sample_dict_fold{args.test_subject}.pickle", "rb") as f:
         sample_dict_fold = pickle.load(f)
+    
+    with open("data/gt_dict.pickle", "rb") as f:
+        gt_dict = pickle.load(f)
 
-    train_set = BimanualDataset(args, sample_dict_fold["train"], "train")
-    test_set = BimanualDataset(args, sample_dict_fold["test"], "test")
-    val_set = BimanualDataset(args, sample_dict_fold["val"], "val")
+    train_set = BimanualDataset(args, sample_dict_fold["train"], gt_dict, "train")
+    test_set = BimanualDataset(args, sample_dict_fold["test"], gt_dict, "test")
+    val_set = BimanualDataset(args, sample_dict_fold["val"], gt_dict, "val")
 
     return train_set, test_set, val_set
