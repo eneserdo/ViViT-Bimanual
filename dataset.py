@@ -148,6 +148,7 @@ def _get_actions_list(gt_action_json: os.PathLike, act_len: int) -> np.ndarray:
 class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
         
+        # CHECKME: crop, resize, augmentation!
         self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         self.split = split
         self.test_subject = args.test_subject
@@ -271,9 +272,13 @@ def get_bimanual_dataset_splits(args) -> Tuple[Dataset, Dataset, Dataset]:
     files_to_check += [f"data/sample_dict_fold{i}.pickle" for i in range(1, 7)]
 
     if not all([os.path.exists(f) for f in files_to_check]):
+        print("Creating mappings...")
+
         make_mappings(args)
         for i in range(1, 7):
             make_fold_mappings(i, args.validation_take)
+    else:
+        print("Using existing mappings...")
 
     with open(f"data/sample_dict_fold{args.test_subject}.pickle", "rb") as f:
         sample_dict_fold = pickle.load(f)
