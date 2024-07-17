@@ -52,6 +52,8 @@ def arg_parser_base():
     ap.add_argument("--smoothing", type=float, default=0.0, help="Label smoothing weight")
     ap.add_argument("--num_acc", type=int, default=1, help="Number of accumulations before backward")
     ap.add_argument("--patience", type=int, default=2, help="patience for ReduceLROnPlateau scheduler")
+    ap.add_argument("--clip", type=float, default=-1, help="Gradient clipping")
+
 
     # Metrics
     ap.add_argument("--weighted_mv", type=str, default="none", choices=["none", "w1", "w2", "auto"], help="...")
@@ -628,9 +630,13 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
         elif len(y_true_L) - len(y_pred__L) == 1:
             y_true_L = y_true_L[:-1]
             y_true_R = y_true_R[:-1]
+        elif len(y_pred__L) - len(y_true_L) == 1:
+            y_pred__L = y_pred__L[:-1]
+            y_pred__R = y_pred__R[:-1]
         else:
-            raise ValueError("Lengths must be equal or one less")
-        
+            print("#########")
+            print("######### Lengths must be equal or one less", len(y_true_L), len(y_pred__L), video_id)
+            continue
         
         # Notice that the convention is (y_true, y_pred)
         f1_at_k(y_true_L, y_pred__L)

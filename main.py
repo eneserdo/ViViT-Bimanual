@@ -66,6 +66,8 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         # labels.shape: [batch_size, 16, 2]
         
         labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
+        # labels.shape: [batch_size*2, 16]
+
         labels_flattened = labels.flatten()
         # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
@@ -81,10 +83,11 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
             loss.backward()
 
             if (step % args.num_acc == 0) or (step == len(loader)):
-
-                # t=torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+                
+                if args.clip > 0:
+                    t=torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+    
                 optimizer.step()
-
                 optimizer.zero_grad()
 
         if mode != "test" and args.save_individual:
@@ -111,10 +114,10 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
     
     metric_dict = metrics.compute()
 
-    loss_cumulative = loss_cumulative / (len(loader) / args.batch_size)
+    loss_cumulative = loss_cumulative / (len(loader.dataset) / args.batch_size)
 
     return metric_dict, loss_cumulative
-    # return None
+
 
 
 def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
