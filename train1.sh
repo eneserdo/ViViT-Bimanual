@@ -1,6 +1,9 @@
 #!/bin/bash
-python main.py -n rmsprop_lr1_wd4 -o RMSprop -lr 0.1 -wd 0.0001 --num_epochs 10 --num_acc 32 --gpu_id 1
+python main.py -n sgd_lr4_c2 -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 10 --num_acc 32 --gpu_id 1 --clip 2
 sleep 5
 
-python main.py -n rmsprop_lr2 -o RMSprop -lr 0.01 -wd 0 --num_epochs 10 --num_acc 32 --gpu_id 1
+python main.py -n sgd_lr4_c1 -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 10 --num_acc 32 --gpu_id 1 --clip 1
+sleep 5
+
+python main.py -n sgd_lr4_c05 -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 10 --num_acc 32 --gpu_id 1 --clip 0.5
 sleep 5
