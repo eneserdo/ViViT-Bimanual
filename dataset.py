@@ -11,12 +11,17 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 import transformers
+import torchvision.transforms.v2 as transforms_v2
+
+# from torchvision.io.image import decode_jpeg, read_file
 
 # Global variables
 
 DEBUG_MODE = False
 
-DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
+DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/bimacs_rgbd_data"
+GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+
 assert os.path.exists(DATASET_DIR)
 
 STRIDE = 2
@@ -149,10 +154,12 @@ class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
         
         # CHECKME: crop, resize, augmentation!
+        self.aug = transforms_v2.RandAugment()
+
         self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         self.split = split
-        self.test_subject = args.test_subject
-        self.validation_take = args.validation_take
+        # self.test_subject = args.test_subject
+        # self.validation_take = args.validation_take
         self.sample_dict = sample_dict
         self.gt_dict = gt_dict
         self.split_len = len(sample_dict)
@@ -174,14 +181,20 @@ class BimanualDataset(Dataset):
         for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
+
             img = np.array(Image.open(path))
+            # img = torch.tensor(np.array(Image.open(path))).permute()
             imgs.append(img)
         
         assert len(imgs) == CLIP_LEN == len(labels)
 
 
         # imgs = torch.stack(imgs)
+        # imgs = self.aug(imgs)
+        # imgs = ...
+
         imgs = self.preprocessor(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
+        # imgs = torch.stack(imgs)
         labels = torch.tensor(labels, dtype=torch.long)
 
         return imgs, labels, idx
@@ -191,7 +204,6 @@ def make_mappings(args):
     # saves a dict for sample_idx -> img path, img idx
     # saves a dict for vid_idx -> action list
 
-    gt_dir = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
 
     sample_dict_master = {}  # sample_idx -> (subject, task, take, frame_idx)
     gt_dict = {}
@@ -206,7 +218,7 @@ def make_mappings(args):
         frame_list = natsort.natsorted(glob.glob(opj(rgb_dir, "chunk_*", "*.png")))
 
         act_list = _get_actions_list(
-            opj(gt_dir, subject, task, f"{take}.json"), len(frame_list)
+            opj(GT_DIR, subject, task, f"{take}.json"), len(frame_list)
         )
 
         assert len(act_list) == len(frame_list)
