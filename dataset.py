@@ -19,13 +19,18 @@ import torchvision.transforms.v2 as transforms_v2
 
 DEBUG_MODE = False
 
-DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/bimacs_rgbd_data"
-GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
-
-assert os.path.exists(DATASET_DIR)
-
 STRIDE = 2
 CLIP_LEN = 32
+
+if os.path.exists("/home/cak/enes/"):   
+    DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/bimacs_rgbd_data"
+    GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+elif os.path.exists("/home/stannis/enes/"):
+    DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
+    GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+
+assert os.path.exists(DATASET_DIR)
+assert os.path.exists(GT_DIR)
 
 OBJECTS = [
     "bowl",
