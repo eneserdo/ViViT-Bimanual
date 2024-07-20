@@ -14,10 +14,9 @@ from torch.utils.data import DataLoader
 
 import transformers
 import wandb
-from dataset import (ACTIONS, OBJECTS, RELATIONS,
-                     get_bimanual_dataset_splits)
+from dataset import (ACTIONS, get_bimanual_dataset_splits)
 from model import FramewiseHead
-from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, visualize_incorrect_preds, wandb_logging)
+from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
 
@@ -56,7 +55,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
     for imgs, labels, idx in loader:
         step += 1
 
-        imgs = imgs.to(device).half()
+        imgs = imgs.to(device)
         labels = labels.to(device)
         # labels.shape: [batch_size, 32, 2]
         
@@ -71,23 +70,27 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         labels_flattened = labels.flatten()
         # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
-        pred = model(imgs).pooler_output
+        with torch.cuda.amp.autocast(dtype=torch.float16, enabled=not args.no_amp):
+            pred = model(imgs).pooler_output
 
-        pred_flattened = pred.flatten(0, 1)
+            pred_flattened = pred.flatten(0, 1)
 
-        loss = criterion(pred_flattened, labels_flattened)
+            loss = criterion(pred_flattened, labels_flattened)
+            loss /= args.num_acc
         
         loss_cumulative += loss.item()
 
         if mode == "train":
-            loss.backward()
+            scaler.scale(loss).backward()
 
-            if (step % args.num_acc == 0) or (step == len(loader)):
+            if (step % args.num_acc == 0): # or (step == len(loader))
                 
                 if args.clip > 0:
-                    t=torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
     
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad()
 
         if mode != "test" and args.save_individual:
@@ -98,6 +101,9 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
+
+        if step % (len(loader)//10) == 0:
+            print(f"{mode} E{epoch:03d} {step:03d}/{len(loader)}: {step_f1_top1:.3f} {step_f1_top3:.3f} {loss.item():.3f}") 
 
         # if mode != "test":
         #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})
@@ -185,20 +191,18 @@ if __name__ == "__main__":
     train_set, test_set, val_set = get_bimanual_dataset_splits(args)
 
     # FIXME: increase num_workers from 0
-    num_workers = 3
+    num_workers = 2
     train_loader = DataLoader(train_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
     test_loader = DataLoader(test_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
     val_loader = DataLoader(val_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
 
     training_len = len(train_set)
     val_len = len(val_set)
+    print(f"Train: {training_len}, Val: {val_len}, Test: {len(test_set)}")
 
     model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400"
                                                     ).to(device=device)
     model.pooler = FramewiseHead(len(ACTIONS)).to(device=device)
-
-
-    model = model.half() # TODO make it parametric, also search for alternatives
 
 
     torch.save({"model_state_dict": model.state_dict()}, 
@@ -215,6 +219,10 @@ if __name__ == "__main__":
     wandb.define_metric("val/confusion_matrix*", step_metric="epoch")
     wandb.define_metric("test/confusion_matrix*", step_metric="epoch")
 
+    # model_params = [
+    #     {"params": model.pooler.parameters(), "lr": args.learning_rate},
+        
+    # ]
 
     if args.optimizer_type == 'SGD':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum,
@@ -237,7 +245,7 @@ if __name__ == "__main__":
 
     criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
 
-
+    scaler = torch.cuda.amp.GradScaler(enabled = not args.no_amp)
 
 
     

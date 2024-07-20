@@ -53,6 +53,7 @@ def arg_parser_base():
     ap.add_argument("--num_acc", type=int, default=1, help="Number of accumulations before backward")
     ap.add_argument("--patience", type=int, default=2, help="patience for ReduceLROnPlateau scheduler")
     ap.add_argument("--clip", type=float, default=-1, help="Gradient clipping")
+    ap.add_argument("--no_amp", action="store_true", help="Disable automatic mixed precision")
 
 
     # Metrics
