@@ -1,6 +1,6 @@
-saved_models/*
+*.pickle
 **__pycache__
 *deneme.ipynb
 .vscode/*
-data/*
+*.pt
 wandb
