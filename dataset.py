@@ -28,6 +28,10 @@ if os.path.exists("/home/cak/enes/"):
 elif os.path.exists("/home/stannis/enes/"):
     DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+elif os.path.exists("/ari/users/eerdogan03"):
+    DATASET_DIR = "YEREL/ds2_bimacs_rgbd_data"
+    GT_DIR = "YEREL/bimacs_rgbd_data_ground_truth"
+
 
 assert os.path.exists(DATASET_DIR)
 assert os.path.exists(GT_DIR)
