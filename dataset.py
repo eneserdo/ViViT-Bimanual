@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 import transformers
-import torchvision.transforms.v2 as transforms_v2
+# import torchvision.transforms.v2 as transforms_v2
 
 # from torchvision.io.image import decode_jpeg, read_file
 
@@ -159,7 +159,7 @@ class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
         
         # CHECKME: crop, resize, augmentation!
-        self.aug = transforms_v2.RandAugment()
+        # self.aug = transforms_v2.RandAugment()
 
         self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         self.split = split
