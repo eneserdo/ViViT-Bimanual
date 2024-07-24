@@ -1,0 +1,8 @@
+wandb
+transformers
+scipy
+matplotlib
+seaborn
+natsort
+torchmetrics
+pillow
