@@ -1,4 +1,3 @@
-
 import torch
 
 class FramewiseHead(torch.nn.Module):

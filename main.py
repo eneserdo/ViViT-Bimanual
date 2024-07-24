@@ -167,7 +167,7 @@ if __name__ == "__main__":
     args = arg_parser()
     print("ARGS:\n", args)
 
-    save_dir = f"saved_models/{args.name}"
+    save_dir = opj(os.getcwd(), "saved_models", f"{args.name}")
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
