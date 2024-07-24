@@ -25,13 +25,15 @@ CLIP_LEN = 32
 if os.path.exists("/home/cak/enes/"):   
     DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/bimacs_rgbd_data"
     GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+    print("[CAK]")
 elif os.path.exists("/home/stannis/enes/"):
     DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
+    print("[STANNIS]")
 else:
     DATASET_DIR = "/YEREL/ds2_bimacs_rgbd_data"
     GT_DIR = "/YEREL/bimacs_rgbd_data_ground_truth"
-
+    print("[UHEM]")
 
 if DEBUG_MODE:
     DATASET_DIR+="_debug"
@@ -136,7 +138,7 @@ def _get_actions_list(gt_action_json: os.PathLike, act_len: int) -> np.ndarray:
     with open(gt_action_json) as f:
         actions_json = json.load(f)
 
-    actions_list = np.zeros((act_len, 2), dtype=np.int32)
+    actions_list = np.zeros((act_len, 2), dtype=np.int32) # FIXME: dont use act_len
 
     # right
     for t in range(0, len(actions_json["right_hand"]) - 1, 2):
@@ -229,15 +231,17 @@ def make_mappings(args):
 
         frame_list = natsort.natsorted(glob.glob(opj(rgb_dir, "chunk_*", "*.png")))
 
+        act_len = int(frame_list[-1].split("_")[-1][:-4]) + 1
+
         act_list = _get_actions_list(
-            opj(GT_DIR, subject, task, f"{take}.json"), len(frame_list)
+            opj(GT_DIR, subject, task, f"{take}.json"), act_len
         )
 
-        assert len(act_list) == len(frame_list)
+        # assert len(act_list) == len(frame_list)
 
         gt_dict[str(subject_int) + str(task_int) + str(take_int)] = act_list
 
-        frame_list = frame_list[::STRIDE]
+        # frame_list = frame_list[::STRIDE]
         frame_idx = 0
 
         for frame in frame_list[: -CLIP_LEN + 1]:
