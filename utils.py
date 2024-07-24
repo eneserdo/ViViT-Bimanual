@@ -480,7 +480,7 @@ class F1_at_k:
         
     def __call__(self, y_true, y_pred, segment_name = None):
          
-        assert y_true.shape == y_pred.shape, "y_true and y_pred must have same shape"
+        assert y_true.shape == y_pred.shape, f"{y_true.shape} != {y_pred.shape}"
         
         # if self.batch_mode:
         #     for y_t, y_p in zip(y_true, y_pred):
@@ -551,7 +551,7 @@ def majority_voting(arr, total_len, buffer_len, weighted):
         
         sub_arr = arr[j : j + repeat * (buffer_len - 1) : buffer_len - 1]
 
-        assert sub_arr.shape[0] == repeat
+        assert sub_arr.shape[0] == repeat, f"{sub_arr.shape[0]} != {repeat}"
 
         if weighted != "none":
             if sub_arr.shape[0] == vote_weights.shape[0]: 
@@ -701,8 +701,8 @@ class VisIndividualPreds:
         # save them in self.segments_pred
         # expect y_true and y_pred to be of shape [temp len, batch size]
 
-        assert y_true.shape == y_pred.shape, "y_true and y_pred must have same shape"
-        assert len(y_true.shape) == 2, "len(y_true.shape) != 2" 
+        assert y_true.shape == y_pred.shape, f"y_true and y_pred must have same shape: {y_true.shape} != {y_pred.shape}"
+        assert len(y_true.shape) == 2, f"{y_true.shape} must be 2D"
 
         selected_idx=self.selected_training_idx if mode=="train" else self.selected_val_idx
 
@@ -774,7 +774,7 @@ class Metrics:
         self.temp_len = temp_len
         self.weighted_mv = args.weighted_mv 
         
-        assert temp_len == 32
+        assert temp_len == 32, f"temp_len must be 32, but it is {temp_len}"
 
 
         # Window-based

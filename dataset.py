@@ -200,7 +200,7 @@ class BimanualDataset(Dataset):
             # img = torch.tensor(np.array(Image.open(path))).permute()
             imgs.append(img)
         
-        assert len(imgs) == CLIP_LEN == len(labels)
+        assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
 
 
         # imgs = torch.stack(imgs)
@@ -245,7 +245,7 @@ def make_mappings(args):
         frame_idx = 0
 
         for frame in frame_list[: -CLIP_LEN + 1]:
-            assert frame.split("_")[-1][:-4] == str(frame_idx)
+            assert frame.split("_")[-1][:-4] == str(frame_idx), f"{frame.split('_')[-1][:-4]} != {frame_idx}, vid: {subject_int} {task_int} {take_int}"
 
             sample_dict_master[sample_idx] = (
                 subject_int,
@@ -287,7 +287,7 @@ def make_fold_mappings(test_subject: int, validation_take: int):
             sample_dict["train"][train_idx] = (subject, task, take, frame_idx, actions)
             train_idx += 1
 
-    assert len(sample_dict["test"]) + len(sample_dict["val"]) + len(sample_dict["train"]) == len(sample_dict_master)
+    assert len(sample_dict["test"]) + len(sample_dict["val"]) + len(sample_dict["train"]) == len(sample_dict_master), f"{len(sample_dict['test'])} + {len(sample_dict['val'])} + {len(sample_dict['train'])} != {len(sample_dict_master)}"
 
     with open(f"data/sample_dict_fold{test_subject}.pickle", "wb") as f:
         pickle.dump(sample_dict, f)
