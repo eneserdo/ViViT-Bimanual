@@ -21,7 +21,10 @@ conda activate pyg_env
 
 # chmod +x /YEREL/ViViT-Bimanual/train0.sh
 # ./ViViT-Bimanual/train0.sh
-python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4_debug -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 4
+python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4_debug_noamp -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2 --no_amp
+sleep 5
+
+python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4_debug -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2
 
 #Program bitince olusan ve saklamak istediklerimizi geri ev dizinine kopyalamali
 cp -r /YEREL/ViViT-Bimanual/saved_models /ari/users/eerdogan03/
