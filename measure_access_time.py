@@ -16,7 +16,7 @@ TASKS = [
 ]
 
 # access_dir1 = "/home/stannis/enes/bimanual/ds2_bimacs_rgbd_data"
-access_dir1 = "/YEREL/ds2_bimacs_rgbd_data"
+access_dir1 = "/YEREL/ds2_bimacs_rgbd_data_debug"
 access_dir2 = "/ari/users/eerdogan03/ds2_bimacs_rgbd_data_debug"
 
 n_frames_per_vid = 150

@@ -101,8 +101,8 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
-
-        if step % (len(loader)//10) == 0:
+        num_of_log_per_epoch = 4
+        if step % (len(loader)//num_of_log_per_epoch) == 0:
             print(f"{mode} E{epoch:03d} {step:03d}/{len(loader)}: f1t1 {step_f1_top1:.3f} - f1t3 {step_f1_top3:.3f} - L {loss.item():.3f}") 
 
         # if mode != "test":
@@ -167,7 +167,8 @@ if __name__ == "__main__":
     args = arg_parser()
     print("ARGS:\n", args)
 
-    save_dir = opj(os.getcwd(), "saved_models", f"{args.name}")
+    # save_dir = opj(os.getcwd(), "saved_models", f"{args.name}")
+    save_dir = opj("saved_models", f"{args.name}")
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
@@ -311,7 +312,7 @@ if __name__ == "__main__":
     if test_metrics is None:
         print("[WARN] No weights found to test")
     else:
-        wandb_logging(wandb, test_metrics, epoch, "test", whole_mode=args.temporal_length == -1)
+        wandb_logging(wandb, test_metrics, epoch, "test")
     
     wandb.finish()
     

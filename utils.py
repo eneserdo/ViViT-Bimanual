@@ -874,7 +874,7 @@ def almost_equal(a, b, eps=1e-6):
     return np.abs(a-b) < eps
 
 
-def wandb_logging(wandb, metric_dict, epoch, mode, whole_mode=False):
+def wandb_logging(wandb, metric_dict, epoch, mode):
     # Gathered all wandb logs here (except batch logs)
     # I think wabdb kind a have state, so I take it as an argument. But not tested otherwise.
 

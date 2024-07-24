@@ -15,16 +15,21 @@ cp -r /ari/users/eerdogan03/ds2_bimacs_rgbd_data_debug /YEREL
 cp -r /ari/users/eerdogan03/bimacs_rgbd_data_ground_truth /YEREL
 cp -r /ari/users/eerdogan03/ViViT-Bimanual /YEREL
 
+echo "Done copying"
+
 eval "$(/ari/users/eerdogan03/miniconda3/bin/conda shell.bash hook)"
 conda activate pyg_env
 
-
+cd /YEREL/ViViT-Bimanual
 # chmod +x /YEREL/ViViT-Bimanual/train0.sh
 # ./ViViT-Bimanual/train0.sh
-python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4_debug_noamp -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2 --no_amp
+python measure_access_time.py
 sleep 5
 
-python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4_debug -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2
+python main.py -n sgd_lr4_debug_noamp -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2 --no_amp
+sleep 5
+
+python main.py -n sgd_lr4_debug -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 2 --num_acc 16 -bs 2
 
 #Program bitince olusan ve saklamak istediklerimizi geri ev dizinine kopyalamali
 cp -r /YEREL/ViViT-Bimanual/saved_models /ari/users/eerdogan03/
