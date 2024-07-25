@@ -55,7 +55,7 @@ def arg_parser_base():
                     help="Type of optimizer to be used  from torch.optim", default='SGD')
     ap.add_argument("-lr", "--learning_rate", type=float, default=0.01, help="...")
     ap.add_argument("-mn", "--momentum", type=float, default=0.9, help="...")
-    ap.add_argument("-wd", "--weight_decay", type=float, default=0.0001, help="...")
+    ap.add_argument("-wd", "--weight_decay", type=float, default=0, help="...")
     ap.add_argument("--scheduler_step_size", type=int, default=-1, help="...")
     ap.add_argument("--scheduler_gamma", type=float, default=0.5, help="...")
     ap.add_argument("--weighted_loss", type=str, default="none", choices=["none", "inv", "sqrt_inv", "effective"],

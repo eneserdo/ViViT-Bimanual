@@ -43,10 +43,8 @@ class MyViViT(torch.nn.Module):
         #     self.spatial_model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
         # elif args.img_size == 224:
 
-        # TODO: resimleri preprocess olarak kırp, çünkü arka plan gereksiz
         self.spatial_model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1)
 
-        temp_emb_size = 768
         # Reset the head layer
         self.spatial_model.heads = torch.nn.Identity()  # torch.nn.Linear(768, temp_emb_size)
 
@@ -54,7 +52,7 @@ class MyViViT(torch.nn.Module):
         self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length, 768).normal_(std=0.02))
 
         self.temporal_model = torch.nn.TransformerEncoder(
-            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=temp_emb_size, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
+            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=768, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
             num_layers=args.num_layers
         )
 
