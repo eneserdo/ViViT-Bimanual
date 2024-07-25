@@ -55,12 +55,13 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         step += 1
 
         imgs = imgs.to(device)
+        # imgs = imgs.half() # FIXME: half()
         labels = labels.to(device)
         # labels.shape: [batch_size, 32, 2]
         
         # bc ViViT processes tokens as 16x16x2 tubelets. So, temporal precision is halved during the training. 
         # But, to calculate the metrics, we will upsample the predictions to the original temporal resolution. 
-        labels = labels[:, ::2, :] 
+        labels = labels[:, ::2, :] # FIXME: Hardcoded 2
         # labels.shape: [batch_size, 16, 2]
         
         labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
@@ -70,7 +71,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
         with torch.cuda.amp.autocast(dtype=torch.float16, enabled=not args.no_amp):
-            pred = model(imgs).pooler_output
+            pred = model(imgs)
 
             pred_flattened = pred.flatten(0, 1)
 
@@ -190,17 +191,17 @@ if __name__ == "__main__":
 
     train_set, test_set, val_set = get_bimanual_dataset_splits(args)
 
-    # FIXME: increase num_workers from 0
-    num_workers = 2
-    train_loader = DataLoader(train_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
-    test_loader = DataLoader(test_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
-    val_loader = DataLoader(val_set, args.batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+
+    train_loader = DataLoader(train_set, args.batch_size, num_workers=args.num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    test_loader = DataLoader(test_set, args.batch_size, num_workers=args.num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
+    val_loader = DataLoader(val_set, args.batch_size, num_workers=args.num_workers, shuffle=True, worker_init_fn=seed_worker, generator=torch_generator)
 
     training_len = len(train_set)
     val_len = len(val_set)
     print(f"Train: {training_len}, Val: {val_len}, Test: {len(test_set)}")
 
     model = make_model(args)
+    # model = model.half() # FIXME: half()
 
 
     torch.save({"model_state_dict": model.state_dict()}, 
