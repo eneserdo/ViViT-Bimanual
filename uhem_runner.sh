@@ -8,20 +8,26 @@
 #SBATCH -o deneme.out      
 #SBATCH -e deneme.err
 #SBATCH --gres=gpu:1
-#SBATCH -J vivit_deneme
+#SBATCH -J vivit_ins
 
 # Data ve kodu kopyala
 cp -r /ari/users/eerdogan03/ds2_bimacs_rgbd_data /YEREL
 cp -r /ari/users/eerdogan03/bimacs_rgbd_data_ground_truth /YEREL
 cp -r /ari/users/eerdogan03/ViViT-Bimanual /YEREL
 
+echo "Done copying"
+
 eval "$(/ari/users/eerdogan03/miniconda3/bin/conda shell.bash hook)"
 conda activate pyg_env
 
+cd /YEREL/ViViT-Bimanual
 
 # chmod +x /YEREL/ViViT-Bimanual/train0.sh
 # ./ViViT-Bimanual/train0.sh
-python /YEREL/ViViT-Bimanual/main.py -n sgd_lr4 -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 4 --num_acc 32 -bs 4
+python measure_access_time.py
+sleep 5
+
+python main.py -n sgd_lr4 -o SGD -lr 0.0001 -mn 0.9 -wd 0 --num_epochs 20 --num_acc 32 -bs 2
 
 #Program bitince olusan ve saklamak istediklerimizi geri ev dizinine kopyalamali
-cp -r /YEREL/ViViT-Bimanual/saved_models /ari/users/eerdogan03/
+cp -r saved_models /ari/users/eerdogan03/

@@ -17,7 +17,7 @@ import transformers
 
 # Global variables
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 STRIDE = 2
 CLIP_LEN = 32
