@@ -12,10 +12,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-import transformers
 import wandb
 from dataset import (ACTIONS, get_bimanual_dataset_splits)
-from model import FramewiseHead
+from model import make_model
 from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
@@ -201,9 +200,7 @@ if __name__ == "__main__":
     val_len = len(val_set)
     print(f"Train: {training_len}, Val: {val_len}, Test: {len(test_set)}")
 
-    model = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400"
-                                                    ).to(device=device)
-    model.pooler = FramewiseHead(len(ACTIONS)).to(device=device)
+    model = make_model(args)
 
 
     torch.save({"model_state_dict": model.state_dict()}, 
@@ -220,10 +217,14 @@ if __name__ == "__main__":
     wandb.define_metric("val/confusion_matrix*", step_metric="epoch")
     wandb.define_metric("test/confusion_matrix*", step_metric="epoch")
 
-    # model_params = [
-    #     {"params": model.pooler.parameters(), "lr": args.learning_rate},
-        
-    # ]
+    # if args.model == "tr":
+    #     model_params = [
+    #         {"params": model.spatial_model.parameters(), "lr": args.learning_rate * 0.1},
+    #         {"params": model.temp_positional_encoding, "lr": args.learning_rate},
+    #         {"params": model.temporal_model.parameters(), "lr": args.learning_rate},
+    #         {"params": model.head.parameters(), "lr": args.learning_rate}
+    #         # weight decay vs hepsi için ayrı ayrı yapılmalı mı?
+    #     ]
 
     if args.optimizer_type == 'SGD':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum,

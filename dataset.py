@@ -11,9 +11,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 import transformers
-# import torchvision.transforms.v2 as transforms_v2
-
-# from torchvision.io.image import decode_jpeg, read_file
+import torchvision
 
 # Global variables
 
@@ -168,9 +166,18 @@ class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
         
         # CHECKME: crop, resize, augmentation!
-        # self.aug = transforms_v2.RandAugment()
+        # if args.use_randaug: 
+        self.aug = torchvision.transforms.RandAugment()
 
-        self.preprocessor = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
+        if args.model == "hf":
+            self.preprocessor = self.__preprocess_hf
+        if args.model == "tr":
+            # if args.img_size == 384:
+            #     self.preprocessor = ...
+            # elif args.img_size == 224:
+            #     self.preprocessor = ...
+            self.preprocessor = self.__preprocess_tr
+
         self.split = split
         # self.test_subject = args.test_subject
         # self.validation_take = args.validation_take
@@ -180,6 +187,17 @@ class BimanualDataset(Dataset):
 
     def __len__(self):
         return self.split_len
+    
+    def __preprocess_hf(self, imgs):
+        return self.preprocessor(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
+
+    def __preprocess_tr(self, imgs):
+        imgs = torch.stack(imgs)
+        imgs = imgs.permute(0, 3, 1, 2) # CHECKME: permute
+        imgs = self.aug(imgs) # FIXME: aug
+        imgs = self.preprocessor(imgs)
+        return imgs
+
 
     def __getitem__(self, idx):
 
@@ -202,13 +220,8 @@ class BimanualDataset(Dataset):
         
         assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
 
+        imgs = self.preprocessor(imgs)
 
-        # imgs = torch.stack(imgs)
-        # imgs = self.aug(imgs)
-        # imgs = ...
-
-        imgs = self.preprocessor(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
-        # imgs = torch.stack(imgs)
         labels = torch.tensor(labels, dtype=torch.long)
 
         return imgs, labels, idx

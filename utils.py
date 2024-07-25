@@ -34,9 +34,20 @@ def arg_parser_base():
     ap.add_argument("-ts", "--test_subject", type=int, default=1, choices=[1, 2, 3, 4, 5, 6], help="...")
     ap.add_argument("-vt", "--validation_take", type=int, default=7, choices=[i for i in range(10)], help="...")
 
+    # Not implemented yet, for torch it is default
+    # ap.add_argument("--use_randaug", action="store_true", help="Use RandAugment for data augmentation")
+
     # Model
     ap.add_argument("-bs", "--batch_size", type=int, default=1, help="...")
+    ap.add_argument("--model", type=str, default="hf", choices=["hf", "tr"], help="...")
+
+    # if model == "hf"
     # ap.add_argument("-c", "--model-config", type=str, default="google/vivit-b-16x2-kinetics400")
+
+    # if model == "tr"
+    ap.add_argument("--nhead", type=int, default=12, help="For temporal encoder")
+    ap.add_argument("--dim_feedforward", type=int, default=3072, help="For temporal encoder")
+    ap.add_argument("--num_layers", type=int, default=12, help="For temporal encoder")
     
     # Optimizer
     ap.add_argument("-o", "--optimizer_type", type=str,
@@ -908,8 +919,3 @@ def wandb_logging(wandb, metric_dict, epoch, mode):
         plt3 = plot_conf_mat(metric_dict["cm_top3_once"], f"{mode}_CM_top3_e{epoch:0>4}", do_return_plot=True)
         wandb.log({f"{mode}/confusion_matrix": {'top3': wandb.Image(plt3)}})
         plt3.close()
-
-
-def make_model(args):
-    
-    pass
