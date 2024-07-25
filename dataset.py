@@ -171,12 +171,15 @@ class BimanualDataset(Dataset):
 
         if args.model == "hf":
             self.preprocessor = self.__preprocess_hf
+            self.normalizer = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
         if args.model == "tr":
             # if args.img_size == 384:
             #     self.preprocessor = ...
             # elif args.img_size == 224:
             #     self.preprocessor = ...
             self.preprocessor = self.__preprocess_tr
+            self.normalizer = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms()
+            
 
         self.split = split
         # self.test_subject = args.test_subject
@@ -189,13 +192,13 @@ class BimanualDataset(Dataset):
         return self.split_len
     
     def __preprocess_hf(self, imgs):
-        return self.preprocessor(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
+        return self.normalizer(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
 
     def __preprocess_tr(self, imgs):
-        imgs = torch.stack(imgs)
-        imgs = imgs.permute(0, 3, 1, 2) # CHECKME: permute
-        imgs = self.aug(imgs) # FIXME: aug
-        imgs = self.preprocessor(imgs)
+        imgs = torch.stack([torch.from_numpy(img) for img in imgs])
+        imgs = imgs.permute(0, 3, 1, 2)
+        imgs = self.aug(imgs)
+        imgs = self.normalizer(imgs)
         return imgs
 
 
