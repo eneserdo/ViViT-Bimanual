@@ -22,12 +22,12 @@ from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, ge
 
 
 torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.benchmark = True # probably disrupts reproducibility (among different machines), but it is faster
 
 # # To fix the following error:
 # OSError: [Errno 24] Too many open files
 # Alternatively ulimit can be increased
-torch.multiprocessing.set_sharing_strategy('file_system')
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
 # # An attempt to fix the following error:
 # XIO:  fatal IO error 25 (Inappropriate ioctl for device) on X server "localhost:10.0" after 2627 requests (2627 known processed) with 8 events remaining.
@@ -101,9 +101,9 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
-        num_of_log_per_epoch = 4
+        num_of_log_per_epoch = 10
         if step % (len(loader)//num_of_log_per_epoch) == 0:
-            print(f"{mode} E{epoch:03d} {step:03d}/{len(loader)}: f1t1 {step_f1_top1:.3f} - f1t3 {step_f1_top3:.3f} - L {loss.item():.3f}") 
+            print(f"{mode} E{epoch:03d} {step:03d}/{len(loader)}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
 
         # if mode != "test":
         #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})
@@ -115,6 +115,8 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         # if (step+1)%20==0:
         #     print("20 BATCH ÇALIŞIYOR SADECE")
         #     break
+
+        del imgs, labels, pred, pred_flattened, labels_flattened, loss
 
     # End of for loop
     
@@ -231,6 +233,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     else:
+        print("args.momentum is ignored. It is only used for SGD.")
         optimizer = getattr(torch.optim, args.optimizer_type)(model.parameters(), lr=args.learning_rate,
                                                               weight_decay=args.weight_decay)
 
