@@ -1,3 +1,4 @@
+from functools import partial
 import glob
 import json
 import os
@@ -178,7 +179,10 @@ class BimanualDataset(Dataset):
             # elif args.img_size == 224:
             #     self.preprocessor = ...
             self.preprocessor = self.__preprocess_tr
-            self.normalizer = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms()
+            
+            # Following throws a warning about aliasing, to solve this, I used partial 
+            # self.normalizer = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms()
+            self.normalizer = partial(torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms, antialias=True)()
             
 
         self.split = split
