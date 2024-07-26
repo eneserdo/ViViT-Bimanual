@@ -16,7 +16,7 @@ import torchvision
 
 # Global variables
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 STRIDE = 2
 CLIP_LEN = 32
@@ -26,7 +26,7 @@ if os.path.exists("/home/cak/enes/"):
     GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[CAK]")
 elif os.path.exists("/home/stannis/enes/"):
-    DATASET_DIR = "/home/stannis/enes/bimanual/bimacs_rgbd_data"
+    DATASET_DIR = "/home/stannis/enes/bimanual/ds2_bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[STANNIS]")
 else:
@@ -167,8 +167,12 @@ class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
         
         # CHECKME: crop, resize, augmentation!
-        # if args.use_randaug: 
-        self.aug = torchvision.transforms.RandAugment()
+        if args.use_randaug and split == "train": 
+            self.aug = torchvision.transforms.RandAugment()
+        else:
+            def identity(x):
+                return x
+            self.aug = identity
 
         if args.model == "hf":
             self.preprocessor = self.__preprocess_hf
