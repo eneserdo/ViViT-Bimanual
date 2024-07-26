@@ -101,9 +101,9 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
-        num_of_log_per_epoch = 10
+        num_of_log_per_epoch = 4
         if step % (len(loader)//num_of_log_per_epoch) == 0:
-            print(f"{mode} E{epoch:03d} {step:03d}/{len(loader)}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
+            print(f"{mode} E{epoch:03d} {step%len(loader):03d}/{len(loader)}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
 
         # if mode != "test":
         #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})
@@ -184,7 +184,8 @@ if __name__ == "__main__":
     torch_generator = torch.Generator()
     torch_generator.manual_seed(args.seed)
 
-    device = torch.device('cuda:' + str(args.gpu_id) if torch.cuda.is_available() else 'cpu')
+    assert torch.cuda.is_available(), "No CUDA?"
+    device = torch.device('cuda:' + str(args.gpu_id))
 
             
     wandb.init(project="Bimanual-Baseline", name=args.name, config=args.__dict__,
@@ -202,7 +203,7 @@ if __name__ == "__main__":
     val_len = len(val_set)
     print(f"Train: {training_len}, Val: {val_len}, Test: {len(test_set)}")
 
-    model = make_model(args)
+    model = make_model(args, device)
     # model = model.half() # FIXME: half()
 
 

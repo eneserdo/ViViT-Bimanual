@@ -35,7 +35,7 @@ def arg_parser_base():
     ap.add_argument("-vt", "--validation_take", type=int, default=7, choices=[i for i in range(10)], help="...")
 
     # Not implemented yet, for torch it is default
-    # ap.add_argument("--use_randaug", action="store_true", help="Use RandAugment for data augmentation")
+    ap.add_argument("--use_randaug", action="store_true", help="Use RandAugment for data augmentation")
 
     # Model
     ap.add_argument("-bs", "--batch_size", type=int, default=1, help="...")
