@@ -80,9 +80,7 @@ class MyViViT(torch.nn.Module):
         return torch.cat([left_ac, right_ac], dim=0)
 
 
-def make_model(args):
-    assert torch.cuda.is_available()
-    device = torch.device("cuda") 
+def make_model(args, device): 
 
     if args.model == "hf":
         # From huggingface, model 1 in the paper
