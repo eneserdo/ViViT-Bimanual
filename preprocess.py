@@ -9,19 +9,24 @@ from PIL import Image
 
 def arg_parser():
     parser = argparse.ArgumentParser(description="Preprocess the dataset")
-    parser.add_argument("--data_path", type=str, help="Path to the dataset")
-    parser.add_argument("--rm_depth", action="store_true", help="Remove depth images")
-    parser.add_argument("--crop", action="store_true", help="Crop the images")
+    parser.add_argument("-p", "--data_path", type=str, help="Path to the dataset")
+    parser.add_argument("-rmd","--rm_depth", action="store_true", help="Remove depth images")
+    parser.add_argument("-c","--crop", action="store_true", help="Crop the images")
+    parser.add_argument("-ds", "--downsample", action="store_true", help="Downsample the images in temporal domain (2)")
+
     
     return parser.parse_args()
 
 
 def preprocess_dataset(args):
+    print("Remove depth: ", args.rm_depth, " Crop: ", args.crop, " Downsample: ", args.downsample)
 
     # copy the dataset to a new folder
-    shutil.copytree(args.data_path, args.data_path+"_preprocessed")
+    # print("Copying the dataset to a new folder...")
+    # shutil.copytree(args.data_path, args.data_path+"_preprocessed")
 
-    dataset_dir = args.data_path+"_preprocessed"
+    print("Preprocessing the dataset...")
+    dataset_dir = args.data_path #+"_preprocessed"
     
     # delete depth images
     if args.rm_depth:
@@ -36,17 +41,19 @@ def preprocess_dataset(args):
 
         frame_list_selected = frame_list[::STRIDE]
         frame_list_deleted = list(set(frame_list) - set(frame_list_selected))
+        
+        if args.downsample:
+            for frame in frame_list_deleted:
+                os.remove(frame)
 
-        for frame in frame_list_deleted:
-            os.remove(frame)
-
-        # downsample the images
         if args.crop:
             for frame in frame_list_selected:
                 img = Image.open(frame)
                 img = img.crop(...)
                 img.save(frame)
 
+    print("OK!")
+    
 def main():
     args = arg_parser()
     preprocess_dataset(args)
