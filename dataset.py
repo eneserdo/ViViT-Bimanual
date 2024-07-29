@@ -22,7 +22,7 @@ STRIDE = 2
 CLIP_LEN = 32
 
 if os.path.exists("/home/cak/enes/"):   
-    DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/bimacs_rgbd_data"
+    DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/ds2_bimacs_rgbd_data"
     GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[CAK]")
 elif os.path.exists("/home/stannis/enes/"):

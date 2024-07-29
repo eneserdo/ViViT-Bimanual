@@ -494,7 +494,11 @@ class F1_at_k:
     def __call__(self, y_true, y_pred, segment_name = None):
          
         assert y_true.shape == y_pred.shape, f"{y_true.shape} != {y_pred.shape}"
-        
+        # FIXME
+        self.k_10 = [0]
+        self.k_25 = [0]
+        self.k_50 = [0]
+
         # if self.batch_mode:
         #     for y_t, y_p in zip(y_true, y_pred):
         #         self.k_10.append(f1_at_k_single_example(y_t, y_p, num_classes=self.num_classes, overlap=0.1))

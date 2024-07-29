@@ -54,6 +54,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
     for imgs, labels, idx in loader:
         step += 1
 
+        batch_size, n_frames = imgs.shape[0], imgs.shape[1]
         imgs = imgs.to(device)
         # imgs = imgs.half() # FIXME: half()
         labels = labels.to(device)
@@ -65,15 +66,15 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         # labels.shape: [batch_size, 16, 2]
         
         labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
-        # labels.shape: [batch_size*2, 16]
+        # labels.shape: [batch_size*2, 16] LLL...RRR...
 
-        labels_flattened = labels.flatten()
+        labels_flattened = labels.reshape(-1) #.flatten() 
         # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
         with torch.cuda.amp.autocast(dtype=torch.float16, enabled=not args.no_amp):
             pred = model(imgs)
 
-            pred_flattened = pred.flatten(0, 1)
+            pred_flattened = pred.reshape(-1, pred.shape[-1]) #.flatten(0, 1)
 
             loss = criterion(pred_flattened, labels_flattened)
             loss /= args.num_acc
