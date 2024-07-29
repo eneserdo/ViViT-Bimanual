@@ -16,7 +16,7 @@ import torchvision
 
 # Global variables
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 STRIDE = 2
 CLIP_LEN = 32
@@ -29,10 +29,14 @@ elif os.path.exists("/home/stannis/enes/"):
     DATASET_DIR = "/home/stannis/enes/bimanual/ds2_bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[STANNIS]")
-else:
+elif os.path.exists("/YEREL/ds2_bimacs_rgbd_data"):
     DATASET_DIR = "/YEREL/ds2_bimacs_rgbd_data"
     GT_DIR = "/YEREL/bimacs_rgbd_data_ground_truth"
     print("[UHEM]")
+elif os.path.exists("/ari/users/eerdogan03/ds2_bimacs_rgbd_data"):
+    DATASET_DIR = "/ari/users/eerdogan03/ds2_bimacs_rgbd_data"
+    GT_DIR = "/ari/users/eerdogan03/bimacs_rgbd_data_ground_truth"
+    print("[ARI]")
 
 if DEBUG_MODE:
     DATASET_DIR+="_debug"
