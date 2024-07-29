@@ -168,6 +168,10 @@ def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
 
 if __name__ == "__main__":
     args = arg_parser()
+
+    if args.model != "tr":
+        assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
+
     print("ARGS:\n", args)
 
     # save_dir = opj(os.getcwd(), "saved_models", f"{args.name}")
@@ -222,21 +226,23 @@ if __name__ == "__main__":
     wandb.define_metric("val/confusion_matrix*", step_metric="epoch")
     wandb.define_metric("test/confusion_matrix*", step_metric="epoch")
 
-    # if args.model == "tr":
-    #     model_params = [
-    #         {"params": model.spatial_model.parameters(), "lr": args.learning_rate * 0.1},
-    #         {"params": model.temp_positional_encoding, "lr": args.learning_rate},
-    #         {"params": model.temporal_model.parameters(), "lr": args.learning_rate},
-    #         {"params": model.head.parameters(), "lr": args.learning_rate}
-    #         # weight decay vs hepsi için ayrı ayrı yapılmalı mı?
-    #     ]
+    if args.model == "tr" and args.base_lr is not None:
+        model_params = [
+            {"params": model.spatial_model.parameters(), "lr": args.base_lr},
+            {"params": model.temp_positional_encoding.parameters()},
+            {"params": model.temporal_model.parameters()},
+            {"params": model.head_left.parameters()},
+            {"params": model.head_right.parameters()}
+        ]
+    else:
+        model_params = model.parameters()
 
     if args.optimizer_type == 'SGD':
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum,
+        optimizer = torch.optim.SGD(model_params, lr=args.learning_rate, momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     else:
         print("args.momentum is ignored. It is only used for SGD.")
-        optimizer = getattr(torch.optim, args.optimizer_type)(model.parameters(), lr=args.learning_rate,
+        optimizer = getattr(torch.optim, args.optimizer_type)(model_params, lr=args.learning_rate,
                                                               weight_decay=args.weight_decay)
 
 

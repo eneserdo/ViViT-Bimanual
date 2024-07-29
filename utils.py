@@ -66,6 +66,7 @@ def arg_parser_base():
     ap.add_argument("--clip", type=float, default=-1, help="Gradient clipping")
     ap.add_argument("--no_amp", action="store_true", help="Disable automatic mixed precision")
     ap.add_argument("--num_workers", type=int, default=2, help="Number of workers for dataloader")
+    ap.add_argument("--base_lr", type=float, default=None, help="...")
 
 
 
@@ -679,7 +680,11 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
         #     plot_segmentation_v2(y_true_L, y_pred__L, conf_L, y_pred_MR, conf_MR, save_file=opj(save_dir, video_id+"_L" + ".png"), title=video_id+"_L")
         #     plot_segmentation_v2(y_true_R, y_pred__R, conf_R, y_pred_ML, conf_ML, save_file=opj(save_dir, video_id+"_R" + ".png"), title=video_id+"_R")
 
-    return *f1_at_k.compute(), f1_classic.compute().item(), conf_mat.compute().cpu().numpy()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.*NaN values found in confusion matrix.*', UserWarning)
+        cm = conf_mat.compute().cpu().numpy()
+
+    return *f1_at_k.compute(), f1_classic.compute().item(), cm 
 
 
 
