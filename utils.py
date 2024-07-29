@@ -689,7 +689,7 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
 
 
 def metrics_to_str(metrics):
-    selected=["f1_top1", "f1_top3", "f1_top1_once", "f1_top3_once", "f1@10", "f1@25", "f1@50"]
+    selected=["f1_top1", "f1_top3", "f1_top1_once", "f1_top3_once"] # , "f1@10", "f1@25", "f1@50"
     return " ".join([f"{k}: {v:.4f}" for k, v in metrics.items() if k in selected])
     # return " ".join([f"{k}: {v:.4f}" for k, v in metrics.items() if "cm" not in k])
 

@@ -229,7 +229,7 @@ if __name__ == "__main__":
     if args.model == "tr" and args.base_lr is not None:
         model_params = [
             {"params": model.spatial_model.parameters(), "lr": args.base_lr},
-            {"params": model.temp_positional_encoding.parameters()},
+            {"params": model.temp_positional_encoding},
             {"params": model.temporal_model.parameters()},
             {"params": model.head_left.parameters()},
             {"params": model.head_right.parameters()}
