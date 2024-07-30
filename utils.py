@@ -1,7 +1,6 @@
 import argparse
 import glob
 import json
-from math import ceil
 import os
 import random
 import shutil
@@ -67,6 +66,7 @@ def arg_parser_base():
     ap.add_argument("--no_amp", action="store_true", help="Disable automatic mixed precision")
     ap.add_argument("--num_workers", type=int, default=2, help="Number of workers for dataloader")
     ap.add_argument("--base_lr", type=float, default=None, help="...")
+    ap.add_argument("--nesterov", action="store_true", help="Use nesterov momentum in SGD")
 
 
 
@@ -930,3 +930,20 @@ def wandb_logging(wandb, metric_dict, epoch, mode):
         plt3 = plot_conf_mat(metric_dict["cm_top3_once"], f"{mode}_CM_top3_e{epoch:0>4}", do_return_plot=True)
         wandb.log({f"{mode}/confusion_matrix": {'top3': wandb.Image(plt3)}})
         plt3.close()
+
+
+def validate_args(args):
+    # Some rules for args
+
+    if args.nesterov:
+        assert args.optimizer == "SGD", "nesterov is only for SGD"
+
+    if args.model != "tr":
+        assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
+
+    previous_models = os.listdir("saved_models")
+    if args.name in previous_models:
+        raise ValueError(f"Model name {args.name} already exists in saved_models directory")
+
+    assert torch.cuda.is_available(), "No CUDA?"
+
