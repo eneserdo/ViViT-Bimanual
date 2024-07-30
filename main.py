@@ -3,7 +3,6 @@ import os
 import pickle
 import random
 import time
-import warnings
 from os.path import join as opj
 
 import matplotlib.pyplot as pyplot
@@ -15,7 +14,7 @@ from torch.utils.data import DataLoader
 import wandb
 from dataset import (ACTIONS, get_bimanual_dataset_splits)
 from model import make_model
-from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, wandb_logging)
+from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, validate_args, wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
 
@@ -169,8 +168,7 @@ def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
 if __name__ == "__main__":
     args = arg_parser()
 
-    if args.model != "tr":
-        assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
+    validate_args(args)
 
     print("ARGS:\n", args)
 
@@ -189,7 +187,7 @@ if __name__ == "__main__":
     torch_generator = torch.Generator()
     torch_generator.manual_seed(args.seed)
 
-    assert torch.cuda.is_available(), "No CUDA?"
+
     device = torch.device('cuda:' + str(args.gpu_id))
 
             
@@ -239,7 +237,7 @@ if __name__ == "__main__":
 
     if args.optimizer_type == 'SGD':
         optimizer = torch.optim.SGD(model_params, lr=args.learning_rate, momentum=args.momentum,
-                                    weight_decay=args.weight_decay)
+                                    weight_decay=args.weight_decay, nesterov = args.nesterov)
     else:
         print("args.momentum is ignored. It is only used for SGD.")
         optimizer = getattr(torch.optim, args.optimizer_type)(model_params, lr=args.learning_rate,
