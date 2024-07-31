@@ -942,7 +942,7 @@ def validate_args(args):
         assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
 
     previous_models = os.listdir("saved_models")
-    if args.name in previous_models:
+    if args.name in previous_models and args.name != "debug":
         raise ValueError(f"Model name {args.name} already exists in saved_models directory")
 
     assert torch.cuda.is_available(), "No CUDA?"
