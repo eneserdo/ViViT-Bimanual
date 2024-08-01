@@ -936,7 +936,7 @@ def validate_args(args):
     # Some rules for args
 
     if args.nesterov:
-        assert args.optimizer == "SGD", "nesterov is only for SGD"
+        assert args.optimizer_type == "SGD", "nesterov is only for SGD"
 
     if args.model != "tr":
         assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
