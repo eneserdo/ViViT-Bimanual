@@ -94,6 +94,36 @@ def arg_parser():
     ap = arg_parser_base()
     return ap.parse_args()
 
+
+def arg_parser_viz_attn():
+    ap = argparse.ArgumentParser()
+    # Dataset
+    ap.add_argument("-ts", "--test_subject", type=int, default=1, choices=[1, 2, 3, 4, 5, 6], help="...")
+    ap.add_argument("-vt", "--validation_take", type=int, default=7, choices=[i for i in range(10)], help="...")
+
+    # Model
+    ap.add_argument("--model", type=str, default="tr", choices=["hf", "tr"], help="...")
+
+    # if model == "tr"
+    ap.add_argument("--nhead", type=int, default=12, help="For temporal encoder")
+    ap.add_argument("--dim_feedforward", type=int, default=3072, help="For temporal encoder")
+    ap.add_argument("--num_layers", type=int, default=12, help="For temporal encoder")
+
+    # Metrics
+    ap.add_argument("--weighted_mv", type=str, default="none", choices=["none", "w1", "w2", "auto"], help="...")
+
+    # Logging
+    ap.add_argument("--model_path", required=False, type=str, help="Pretrained model path") # FIXME required=True
+
+    # Others
+    ap.add_argument("--gpu_id", type=int, default=0, help="...")
+    ap.add_argument("--seed", type=int, default=34, help="...")
+
+    args = ap.parse_args()
+    args.use_randaug = False
+    return args
+
+
 def arg_parser_cv():
     ap = arg_parser_base()
 
