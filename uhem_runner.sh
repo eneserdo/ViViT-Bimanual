@@ -5,8 +5,8 @@
 #SBATCH -n 64
 #SBATCH --mail-type=END,FAIL                     # is bitince yada sorun cikarsa mail at
 #SBATCH --mail-user=erdogane16@itu.edu.tr        # mail atilacak adres
-#SBATCH -o m2_1_d.out      
-#SBATCH -e m2_1_d.err
+#SBATCH -o m2_2.out      
+#SBATCH -e m2_2.err
 #SBATCH --gres=gpu:1
 #SBATCH -J vivit_m2
 
@@ -31,7 +31,7 @@ cd /YEREL/ViViT-Bimanual
 # python main.py -n M2_sgd_l3_h8 --model tr --num_workers 2 -o SGD -lr 0.001 -bs 32 --num_acc 16 --nhead 8 --num_layers 3 --dim_feedforward 2048 --base_lr 0.0005 --num_epochs 5
 # sleep 5
 
-python main.py -n M2_sgd_l3_h8 --model tr --num_workers 4 -o SGD -lr 0.001 -bs 64 --num_acc 16 --nhead 8 --num_layers 3 --dim_feedforward 2048 --base_lr 0.0005 --num_epochs 1 --use_randaug
+python main.py -n M2_sgd38_nwd --model tr --num_workers 4 -o SGD -lr 0.001 -bs 32 --num_acc 16 --nhead 8 --num_layers 3 --dim_feedforward 2048 --base_lr 0.0005 --num_epochs 20 --nesterov --weight_decay 0.001 --use_randaug
 sleep 5
 
 #Program bitince olusan ve saklamak istediklerimizi geri ev dizinine kopyalamali
