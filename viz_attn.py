@@ -123,12 +123,13 @@ def save_attention_maps(save_dir, attention_maps, names):
 
 
 def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
+    # attentions: list of layers, 
     # FIXME: this code assumes bs=1
-    result = torch.eye(attentions.size(-1))
+    bs, num_token = attentions[0].shape[:2]
+    result = torch.eye(num_token)
 
     with torch.no_grad():
-        # for attention in attentions:
-        for name, attention in attentions.items():
+        for attention in attentions:
             if head_fusion == "mean":
                 attention_heads_fused = attention.mean(axis=1)
             elif head_fusion == "max":
@@ -141,13 +142,15 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
 
             # Drop the lowest attentions, but
             # don't drop the class token
-            flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
+            flat = attention_heads_fused.view(bs, -1)
             _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
 
             if has_cls_token:
-                indices = indices[indices != 0]
-
-            flat[0, indices] = 0
+                for idx, item in enumerate(indices):
+                    item = item[item != 0]
+                    flat[idx, item] = 0
+            else:
+                flat[indices] = 0
 
             Identity = torch.eye(attention_heads_fused.size(-1))
             a = (attention_heads_fused + 1.0*Identity)/2
@@ -172,8 +175,7 @@ def viz_attn(spacial_rollout_attn, temporal_rollout_attn, original_images, pred,
 
     ...
 
-def main(args):
-    
+def main(args):    
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -182,8 +184,6 @@ def main(args):
     # torch.use_deterministic_algorithms(mode=True, warn_only=True) # This throws an error
     torch_generator = torch.Generator()
     torch_generator.manual_seed(args.seed)
-
-
     device = torch.device('cuda:' + str(args.gpu_id))
 
 
@@ -200,7 +200,6 @@ def main(args):
         # load model
         pred = model(samples.to(device))
         pred = pred.cpu().numpy()
-        labels = labels.cpu().numpy()
 
 
     spatial_rollout_attn = rollout(ATTENTION["s"], 0.5, "mean") # her bir vid için 16 tane ?
