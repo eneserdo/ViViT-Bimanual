@@ -1,62 +1,71 @@
+# This code is like a personal attack to all programming principles, but it works 
+
+import copy
 import pickle
 import random
 from os.path import join as opj
 
-import matplotlib.pyplot as pyplot
+import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import torch
-from torch_geometric.loader import DataLoader
+import cv2
 
 from model import make_model
-from dataset import get_bimanual_dataset_splits
+from dataset import get_bimanual_dataset_splits, ACTIONS
 from utils import arg_parser_viz_attn as arg_parser
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-pyplot.ioff()
+plt.ioff()
 matplotlib.use('Agg')
 
 # To check for NaNs in the gradients
 torch.autograd.set_detect_anomaly(True)
 
+# TRAIN_SUBSET = [150, 500, 1500]
+# VAL_SUBSET = [50, 100, 200]
+TRAIN_SUBSET = [150]
+TEST_SUBSET = [50]
 
 def get_sample_batch(args):
-    TRAIN_SUBSET = [150, 500, 1500]
-    VAL_SUBSET = [50, 100, 200]
     
     train_set, test_set, val_set = get_bimanual_dataset_splits(args)
-
 
     with open(f"data/sample_dict_fold{args.test_subject}.pickle", "rb") as f:
         sample_dict = pickle.load(f)
 
+    samples, labels, names, original = [], [], [], []
 
-    samples = []
-    labels = []
-    names = []
     for i in TRAIN_SUBSET:
-        samples.append(train_set[i][0])
-        labels.append(train_set[i][1])
+        samples.append(train_set[i][0]) # bu zaten ds oluyor modelin içinde
+        original.append(train_set.get_original_imgs(i)[::2]) # Downsample
+        labels.append(train_set[i][1][::2])
+
         sb, task, take, fr, act = sample_dict["train"][i]
         names.append(f"{sb}{task}{take}_{fr}")
     
 
-    for i in VAL_SUBSET:
-        samples.append(val_set[i][0])
-        labels.append(val_set[i][1])
-        sb, task, take, fr, act = sample_dict["val"][i]
+    for i in TEST_SUBSET:
+        samples.append(test_set[i][0]) 
+        labels.append(test_set[i][1][::2])
+        original.append(test_set.get_original_imgs(i)[::2])
+
+        sb, task, take, fr, act = sample_dict["test"][i]
         names.append(f"{sb}{task}{take}_{fr}")
     
-    
-    return torch.stack(samples), labels, names
+    samples = torch.stack(samples)
+
+
+    return samples, labels, names, original
 
 
 ATTENTION = {"s": [], "t": []}
 def getAttentionHook(name):
+    # print(f"Hook for {name} is set")
     def hook(model, input, output):
-        # assert isinstance(model, torch.nn.MultiheadAttention)
+        assert isinstance(model, torch.nn.MultiheadAttention)
 
         num_heads = model.num_heads
         head_dim = model.head_dim
@@ -98,8 +107,7 @@ def getAttentionHook(name):
         # # Make sure you set the dropout to 0.0
         # assert torch.allclose(output[0], y, atol=1e-7) # Sometimes it fails due to numerical precision somehow, so set it somethign like 1e-4
 
-        ATTENTION[name[0]].append(attn_reshaped)
-
+        ATTENTION[name[0]].append(attn_reshaped.detach().cpu())
 
         
     return hook
@@ -113,20 +121,16 @@ def set_hooks(model):
     # temporal attention
     for i in range(len(model.temporal_model.layers)):
         model.temporal_model.layers[i].self_attn.register_forward_hook(getAttentionHook(f"t_layer_{i}"))
+    # model.temporal_model.register_forward_hook(getAttentionHook("t_layer_0"))
 
-
-def save_attention_maps(save_dir, attention_maps, names):
-    for i, (name, attention_map) in enumerate(attention_maps.items()):
-        for j in range(attention_map.shape[0]):
-            pyplot.imshow(attention_map[j].cpu().numpy())
-            pyplot.savefig(opj(save_dir, f"{names[j]}_{name}_{i}.png"))
 
 
 def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
-    # attentions: list of layers, 
-    # FIXME: this code assumes bs=1
-    bs, num_token = attentions[0].shape[:2]
-    result = torch.eye(num_token)
+    # attentions: [A_l1, A_l2, ..., A_ln]
+    # A_li: [bs, num_heads, num_token, num_token] 
+    bs, _, num_token = attentions[0].shape[:3]
+    device = attentions[0].device
+    result = torch.eye(num_token).to(device)
 
     with torch.no_grad():
         for attention in attentions:
@@ -145,14 +149,26 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
             flat = attention_heads_fused.view(bs, -1)
             _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
 
-            if has_cls_token:
-                for idx, item in enumerate(indices):
-                    item = item[item != 0]
-                    flat[idx, item] = 0
-            else:
-                flat[indices] = 0
+            row_indices = torch.arange(bs).unsqueeze(1).expand(bs, indices.shape[1])
 
-            Identity = torch.eye(attention_heads_fused.size(-1))
+            if has_cls_token: # to preserve the class token (but this is actually cls-cls attention ???)
+                first_col = copy.deepcopy(flat[:, 0])
+                flat[row_indices, indices] = 0
+                flat[:, 0] = first_col
+            else:
+                flat[row_indices, indices] = 0
+
+
+            # mask[indices] = 0
+
+            # if has_cls_token:
+            #     for idx, item in enumerate(indices):
+            #         item = item[item != 0]
+            #         flat[idx, item] = 0
+            # else:
+            #     flat[indices] = 0 
+
+            Identity = torch.eye(attention_heads_fused.size(-1)).to(device)
             a = (attention_heads_fused + 1.0*Identity)/2
             a = a / a.sum(dim=-1, keepdim=True)
 
@@ -161,19 +177,88 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
     return result
 
 
-def load_imgs(names):
-    ...
-
-def viz_attn(spacial_rollout_attn, temporal_rollout_attn, original_images, pred, labels, names):
+def get_attentioned_image(images, attns):
     # Look at the total attention between the class token,
     # and the image patches
-    # mask = result[0, 0, 1:]
-    # # In case of 224x224 image, this brings us from 196 to 14
-    # width = int(mask.size(-1)**0.5)
-    # mask = mask.reshape(width, width).numpy()
-    # mask = mask / np.max(mask)
 
-    ...
+    ret = []
+    for img, attn in zip(images, attns):
+        
+        # central crop and resize
+        mask = attn[0, 1:].reshape(14, 14).numpy()
+
+        # mask = np.clip(mask / np.max(mask) * 255, 0, 255).astype(np.uint8)
+        # mask = mask.repeat(16, axis=0).repeat(16, axis=1) # 224x224
+        # mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
+        # combined = cv2.addWeighted(img.numpy(), 0.5, mask, 0.5, 0)
+        
+        mask = mask / np.max(mask)
+        mask = cv2.resize(mask, (224, 224))
+        img = np.float32(img) / 255
+        heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+        heatmap = np.float32(heatmap) / 255
+        
+        combined = heatmap + np.float32(img)
+        combined = combined / np.max(combined)
+        combined = np.uint8(255 * combined)
+
+        ret.append(combined)
+
+    return ret
+
+
+def viz_attn(spacial_rollout_attn, temporal_rollout_attn, original_images, preds, labels, names):
+    # There are 2N samples (N train, N test), save each of them separately
+    # For each sample, there are 16 frames
+    # There is two hand for each hand
+    selected_frame_idx = 8
+    spacial_rollout_attn = spacial_rollout_attn.reshape(-1, 16, 197, 197) # [bs, num_frames, num_token, num_token]
+
+    pred_left, pred_right = torch.split(preds, 2, dim=0)
+    save_dir = opj("attention_maps")
+
+    for i in range(len(names)):
+
+        s_attn = spacial_rollout_attn[i] # [16, 197, 197]
+        t_attn = temporal_rollout_attn[i] # [16, 16]
+        t_attn = t_attn[selected_frame_idx] # [16]
+        t_attn = (t_attn*100).to(torch.long).tolist()
+
+        original = original_images[i] # [16, 224, 224, 3]
+        
+        # pl_str = [ACTIONS[p] for p in pred_left[i]]
+        # pr_str = [ACTIONS[p] for p in pred_right[i]]
+
+        # gtl_str = [ACTIONS[p] for p in labels[i][:, 0]]
+        # gtr_str = [ACTIONS[p] for p in labels[i][:, 1]]
+
+        pl_str = pred_left[i]
+        pr_str = pred_right[i]
+
+        gtl_str = labels[i][:, 0]
+        gtr_str = labels[i][:, 1]
+
+        subtitles = [f"F{j}-A{t_attn[j]} gt:({gtl_str[j]}, {gtr_str[j]}), p:({pl_str[j]}, {pr_str[j]})" for j in range(16)]
+
+        n = names[i]
+
+        s_attn_imgs = get_attentioned_image(original, s_attn)
+
+
+        fig, axes = plt.subplots(2, 8, figsize=(20, 5))
+        axes = axes.flatten()
+
+        # for j in range(16):
+        for ax, img, subtitle in zip(axes, s_attn_imgs, subtitles):
+            ax.imshow(img)
+            ax.set_title(subtitle)
+            ax.axis("off")
+        
+        plt.title(f"Selected frame: {selected_frame_idx}th frame")
+        plt.tight_layout()        
+        plt.savefig(opj(save_dir, f"attn_{n}.png"))
+        plt.close()
+
 
 def main(args):    
     random.seed(args.seed)
@@ -193,29 +278,24 @@ def main(args):
 
     set_hooks(model)
 
-    samples, labels, names = get_sample_batch(args)    
+    samples, labels, names, originals = get_sample_batch(args)
+    
+ 
 
     model.eval()
-    with torch.no_grad():
-        # load model
-        pred = model(samples.to(device))
-        pred = pred.cpu().numpy()
+    # with torch.no_grad(): # This causes the hook to not work, It seems fastpath disables the hooks
+    preds = model(samples.to(device))
+    preds = preds.detach().cpu().argmax(axis=-1)
 
 
-    spatial_rollout_attn = rollout(ATTENTION["s"], 0.5, "mean") # her bir vid için 16 tane ?
+    spatial_rollout_attn = rollout(ATTENTION["s"], 0.8, "max") # her bir vid için 16 tane ?
+    # spatial_rollout_attn: [bs*num_frames, num_token, num_token]
 
-    temporal_rollout_attn = rollout(ATTENTION["t"], 0.5, "mean", False)
-    original_images = load_imgs(names)
-
-    viz_attn(spatial_rollout_attn, temporal_rollout_attn, original_images, pred, labels, names)
-    # pick middle frame's label
-
-
-
-
+    temporal_rollout_attn = rollout(ATTENTION["t"], 0.8, "max", False)
+    # temporal_rollout_attn: [bs, num_token, num_token]
+    viz_attn(spatial_rollout_attn, temporal_rollout_attn, originals, preds, labels, names)
     
-        
-            
+
 
 
 if __name__ == "__main__":

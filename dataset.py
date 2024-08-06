@@ -13,6 +13,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 import transformers
 import torchvision
+import torchvision.transforms.functional as F
+from torchvision.transforms import InterpolationMode
 
 # Global variables
 
@@ -241,6 +243,39 @@ class BimanualDataset(Dataset):
 
         return imgs, labels, idx
 
+    def get_original_imgs(self, idx) -> Tuple[List[np.ndarray], torch.Tensor]:
+        # This function is identical to __getitem__ but it returns the original images
+        subject, task, take, frame_idx, _ = self.sample_dict[idx]
+        
+        act_list = self.gt_dict[str(subject) + str(task) + str(take)]
+
+        labels = act_list[frame_idx:frame_idx+CLIP_LEN*STRIDE]
+        labels = labels[::STRIDE]
+
+
+        imgs = []
+        for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
+            path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
+            
+
+            img = np.array(Image.open(path))
+            # img = torch.tensor(np.array(Image.open(path))).permute()
+            imgs.append(img)
+        
+        assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
+
+        labels = torch.tensor(labels, dtype=torch.long)
+        
+        
+        # This is what normalizer does except normalization :P
+        imgs = torch.stack([torch.from_numpy(img) for img in imgs])
+        imgs = imgs.permute(0, 3, 1, 2)
+        # Why 256? 
+        imgs = F.resize(imgs, 256, interpolation=InterpolationMode.BILINEAR, antialias=True) # it keeps the aspect ratio
+        imgs = F.center_crop(imgs, 224) # [256, 341] -> [224, 224]
+        imgs = imgs.permute(0, 2, 3, 1)
+
+        return imgs
 
 def make_mappings(args):
     # saves a dict for sample_idx -> img path, img idx
