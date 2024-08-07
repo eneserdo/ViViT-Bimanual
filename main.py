@@ -17,7 +17,7 @@ from model import make_model
 from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, validate_args, wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
-
+from torchmetrics.classification import MulticlassF1Score
 
 
 torch.backends.cudnn.deterministic = True
@@ -48,7 +48,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
     loss_cumulative = 0
 
     metrics = Metrics(args, len(ACTIONS), 32, device, gt_dict, sample_dict, mode)
-    
+    f1_calc = MulticlassF1Score(num_classes=len(ACTIONS), average='macro')
 
     for imgs, labels, idx in loader:
         step += 1
@@ -67,15 +67,17 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
         # labels.shape: [batch_size*2, 16] LLL...RRR...
 
-        labels_flattened = labels.reshape(-1) #.flatten() 
+        # labels_flattened = labels.reshape(-1) #.flatten() # to be used in metrics
         # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
 
+        labels_dominant = torch.mode(labels, dim=1).values # to be used in loss
+
         with torch.cuda.amp.autocast(dtype=torch.float16, enabled=not args.no_amp):
-            pred = model(imgs)
+            pred = model(imgs) # [batch_size*2, num_classes]
 
-            pred_flattened = pred.reshape(-1, pred.shape[-1]) #.flatten(0, 1)
+            # pred_flattened = pred.reshape(-1, pred.shape[-1]) #.flatten(0, 1)
 
-            loss = criterion(pred_flattened, labels_flattened)
+            loss = criterion(pred, labels_dominant)
             loss /= args.num_acc
         
         loss_cumulative += loss.item()
@@ -98,7 +100,9 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
             raise NotImplementedError("save_individual may be broken due to global idx, please check it")
             # VIP.pick_samples(y_true=gt_reordered.cpu().argmax(2), y_pred=pred.detach().cpu(), idx=idxes, epoch=epoch, mode=mode)
 
+        f1_calc.update(pred.argmax(dim=1).cpu(), labels_dominant.cpu())
 
+        pred = pred.unsqueeze(1).repeat(1, 16, 1)
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
         num_of_log_per_epoch = 4
@@ -116,11 +120,13 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         #     print("20 BATCH ÇALIŞIYOR SADECE")
         #     break
 
-        del imgs, labels, pred, pred_flattened, labels_flattened, loss
+        del imgs, labels, pred, labels_dominant, loss
 
     # End of for loop
-    
+    f1_top1 = f1_calc.compute()
     metric_dict = metrics.compute()
+
+    metric_dict["f1_top1"] = f1_top1.item()
 
     loss_cumulative = loss_cumulative / (len(loader.dataset) / args.batch_size)
 

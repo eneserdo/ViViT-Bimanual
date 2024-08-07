@@ -48,8 +48,10 @@ class MyViViT(torch.nn.Module):
         # Reset the head layer
         self.spatial_model.heads = torch.nn.Identity()  # torch.nn.Linear(768, temp_emb_size)
 
-
-        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length, 768).normal_(std=0.02))
+        self.cls_left = torch.nn.Parameter(torch.zeros(1, 1, 768))
+        self.cls_right = torch.nn.Parameter(torch.zeros(1, 1, 768))
+        
+        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length + 2, 768).normal_(std=0.02))
 
         self.temporal_model = torch.nn.TransformerEncoder(
             encoder_layer=torch.nn.TransformerEncoderLayer(d_model=768, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
@@ -69,13 +71,16 @@ class MyViViT(torch.nn.Module):
         x = self.spatial_model(x)
 
         x = x.reshape(bs, n_frames, -1)
+        x = torch.cat([self.cls_left.repeat(bs, 1, 1), x, self.cls_right.repeat(bs, 1, 1)], dim=1)
+        # batch_class_token = self.class_token.expand(n, -1, -1) # CHECKME expand vs repeat
+        # x = torch.cat([batch_class_token, x], dim=1)
 
         x = x + self.temp_positional_encoding
         
         x = self.temporal_model(x)
 
-        left_ac = self.head_left(x)
-        right_ac = self.head_right(x)
+        left_ac = self.head_left(x[:, 0, :])
+        right_ac = self.head_right(x[:, -1, :])
 
         return torch.cat([left_ac, right_ac], dim=0)
 
