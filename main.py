@@ -109,7 +109,7 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         if step % (len(loader)//num_of_log_per_epoch) == 0:
             print(f"{mode} E{epoch:03d} {step%len(loader):03d}/{len(loader)}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
 
-        # if mode != "test":
+        # if mode != "test": 
         #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})
 
         # if mode == "test" and args.save_incorrects:
