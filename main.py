@@ -208,6 +208,10 @@ if __name__ == "__main__":
 
     model = make_model(args, device)
     # model = model.half() # FIXME: half()
+    # save model config
+    # model_config ={}
+    # with open(opj(save_dir, "config.json"), "wb") as f:
+        
 
 
     torch.save({"model_state_dict": model.state_dict()}, 

@@ -1,6 +1,7 @@
 # This code is like a personal attack to all programming principles, but it works 
 
 import copy
+import os
 import pickle
 import random
 from os.path import join as opj
@@ -207,7 +208,7 @@ def get_attentioned_image(images, attns):
     return ret
 
 
-def viz_attn(spacial_rollout_attn, temporal_rollout_attn, original_images, preds, labels, names):
+def viz_attn(save_dir, spacial_rollout_attn, temporal_rollout_attn, original_images, preds, labels, names):
     # There are 2N samples (N train, N test), save each of them separately
     # For each sample, there are 16 frames
     # There is two hand for each hand
@@ -215,7 +216,7 @@ def viz_attn(spacial_rollout_attn, temporal_rollout_attn, original_images, preds
     spacial_rollout_attn = spacial_rollout_attn.reshape(-1, 16, 197, 197) # [bs, num_frames, num_token, num_token]
 
     pred_left, pred_right = torch.split(preds, 2, dim=0)
-    save_dir = opj("attention_maps")
+    
 
     for i in range(len(names)):
 
@@ -271,10 +272,14 @@ def main(args):
     torch_generator.manual_seed(args.seed)
     device = torch.device('cuda:' + str(args.gpu_id))
 
+    save_dir = opj("attention_maps", args.save_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
     model = make_model(args, device)
-    # model.load_state_dict(torch.load(args.model_path)["model_state_dict"])
-    print("Currently no model is loaded".upper())
+    if args.model_path is not None:
+        model.load_state_dict(torch.load(args.model_path)["model_state_dict"])
+    else:
+        print("Currently no model is loaded".upper())
 
     set_hooks(model)
 
@@ -293,7 +298,7 @@ def main(args):
 
     temporal_rollout_attn = rollout(ATTENTION["t"], 0.8, "max", False)
     # temporal_rollout_attn: [bs, num_token, num_token]
-    viz_attn(spatial_rollout_attn, temporal_rollout_attn, originals, preds, labels, names)
+    viz_attn(save_dir, spatial_rollout_attn, temporal_rollout_attn, originals, preds, labels, names)
     
 
 

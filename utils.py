@@ -113,7 +113,8 @@ def arg_parser_viz_attn():
     ap.add_argument("--weighted_mv", type=str, default="none", choices=["none", "w1", "w2", "auto"], help="...")
 
     # Logging
-    ap.add_argument("--model_path", required=False, type=str, help="Pretrained model path") # FIXME required=True
+    ap.add_argument("-m", "--model_path", default=None, type=str, help="Pretrained model path")
+    ap.add_argument("-s", "--save_dir", default="debug", type=str, help="Directory to save visualizations")
 
     # Others
     ap.add_argument("--gpu_id", type=int, default=0, help="...")
