@@ -215,6 +215,11 @@ class BimanualDataset(Dataset):
         imgs = self.normalizer(imgs)
         return imgs
 
+    def _read_img(self, path):
+        img = Image.open(path)
+        img = img.crop((90, 10, 470+90, 480)) # left, top, right, bottom
+        return np.array(img)
+
 
     def __getitem__(self, idx):
 
@@ -231,7 +236,9 @@ class BimanualDataset(Dataset):
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
 
-            img = np.array(Image.open(path))
+            # img = np.array(Image.open(path))
+            img = self._read_img(path)
+            
             # img = torch.tensor(np.array(Image.open(path))).permute()
             imgs.append(img)
         
@@ -258,7 +265,8 @@ class BimanualDataset(Dataset):
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
 
-            img = np.array(Image.open(path))
+            # img = np.array(Image.open(path))
+            img = self._read_img(path)
             # img = torch.tensor(np.array(Image.open(path))).permute()
             imgs.append(img)
         
