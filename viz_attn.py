@@ -25,6 +25,7 @@ matplotlib.use('Agg')
 # To check for NaNs in the gradients
 torch.autograd.set_detect_anomaly(True)
 
+SEQ_LEN = 16
 # TRAIN_SUBSET = [150, 500, 1500]
 # VAL_SUBSET = [50, 100, 200]
 TRAIN_SUBSET = [150]
@@ -122,8 +123,6 @@ def set_hooks(model):
     # temporal attention
     for i in range(len(model.temporal_model.layers)):
         model.temporal_model.layers[i].self_attn.register_forward_hook(getAttentionHook(f"t_layer_{i}"))
-    # model.temporal_model.register_forward_hook(getAttentionHook("t_layer_0"))
-
 
 
 def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
@@ -160,15 +159,6 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
                 flat[row_indices, indices] = 0
 
 
-            # mask[indices] = 0
-
-            # if has_cls_token:
-            #     for idx, item in enumerate(indices):
-            #         item = item[item != 0]
-            #         flat[idx, item] = 0
-            # else:
-            #     flat[indices] = 0 
-
             Identity = torch.eye(attention_heads_fused.size(-1)).to(device)
             a = (attention_heads_fused + 1.0*Identity)/2
             a = a / a.sum(dim=-1, keepdim=True)
@@ -181,27 +171,29 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
 def get_attentioned_image(images, attns):
     # Look at the total attention between the class token,
     # and the image patches
+    im_size = images[0].shape[0]
+    attn_size = np.sqrt(attns.shape[-1]).astype(np.int32)
+    repeat_count = im_size // attn_size
 
     ret = []
     for img, attn in zip(images, attns):
         
-        # central crop and resize
-        mask = attn[0, 1:].reshape(14, 14).numpy()
-
-        # mask = np.clip(mask / np.max(mask) * 255, 0, 255).astype(np.uint8)
-        # mask = mask.repeat(16, axis=0).repeat(16, axis=1) # 224x224
-        # mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
-        # combined = cv2.addWeighted(img.numpy(), 0.5, mask, 0.5, 0)
+        # Patches are visible
+        mask = attn[0, 1:].reshape(attn_size, attn_size).numpy()
+        mask = np.clip(mask / np.max(mask) * 255, 0, 255).astype(np.uint8)
+        mask = mask.repeat(repeat_count, axis=0).repeat(repeat_count, axis=1) # 224x224
+        mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)[:, :, ::-1]
+        combined = cv2.addWeighted(img.numpy(), 0.4, mask, 0.6, 0)
         
-        mask = mask / np.max(mask)
-        mask = cv2.resize(mask, (224, 224))
-        img = np.float32(img) / 255
-        heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
-        heatmap = np.float32(heatmap) / 255
-        
-        combined = heatmap + np.float32(img)
-        combined = combined / np.max(combined)
-        combined = np.uint8(255 * combined)
+        # Alternative: Patches are kinda blurred
+        # mask = mask / np.max(mask)
+        # mask = cv2.resize(mask, (224, 224))
+        # img = np.float32(img) / 255
+        # heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)[:, :, ::-1]
+        # heatmap = np.float32(heatmap) / 255
+        # combined = heatmap + np.float32(img)
+        # combined = combined / np.max(combined)
+        # combined = np.uint8(255 * combined)
 
         ret.append(combined)
 
@@ -213,43 +205,44 @@ def viz_attn(save_dir, spacial_rollout_attn, temporal_rollout_attn, original_ima
     # For each sample, there are 16 frames
     # There is two hand for each hand
     selected_frame_idx = 8
-    spacial_rollout_attn = spacial_rollout_attn.reshape(-1, 16, 197, 197) # [bs, num_frames, num_token, num_token]
+    bs_sl, num_tokens, _ = spacial_rollout_attn.shape # [bs*num_frames, num_token, num_token] 
+    bs = bs_sl // SEQ_LEN
+    spacial_rollout_attn = spacial_rollout_attn.reshape(bs, SEQ_LEN, num_tokens, num_tokens)
 
     pred_left, pred_right = torch.split(preds, 2, dim=0)
     
 
-    for i in range(len(names)):
+    for i in range(len(names)): # for each sample in the batch
 
-        s_attn = spacial_rollout_attn[i] # [16, 197, 197]
-        t_attn = temporal_rollout_attn[i] # [16, 16]
-        t_attn = t_attn[selected_frame_idx] # [16]
+        s_attn = spacial_rollout_attn[i] # [SEQ_LEN, num_token, num_token]
+        t_attn = temporal_rollout_attn[i] # [SEQ_LEN, SEQ_LEN]
+        t_attn = t_attn[selected_frame_idx] # [SEQ_LEN]
         t_attn = (t_attn*100).to(torch.long).tolist()
 
-        original = original_images[i] # [16, 224, 224, 3]
+        original = original_images[i] # [SEQ_LEN, im_size, im_size, 3]
         
-        # pl_str = [ACTIONS[p] for p in pred_left[i]]
-        # pr_str = [ACTIONS[p] for p in pred_right[i]]
+        pl_str = [ACTIONS[p][:2] for p in pred_left[i]]
+        pr_str = [ACTIONS[p][:2] for p in pred_right[i]]
 
-        # gtl_str = [ACTIONS[p] for p in labels[i][:, 0]]
-        # gtr_str = [ACTIONS[p] for p in labels[i][:, 1]]
+        gtl_str = [ACTIONS[p][:2] for p in labels[i][:, 0]]
+        gtr_str = [ACTIONS[p][:2] for p in labels[i][:, 1]]
 
-        pl_str = pred_left[i]
-        pr_str = pred_right[i]
+        # pl_str = pred_left[i]
+        # pr_str = pred_right[i]
 
-        gtl_str = labels[i][:, 0]
-        gtr_str = labels[i][:, 1]
+        # gtl_str = labels[i][:, 0]
+        # gtr_str = labels[i][:, 1]
 
-        subtitles = [f"F{j}-A{t_attn[j]} gt:({gtl_str[j]}, {gtr_str[j]}), p:({pl_str[j]}, {pr_str[j]})" for j in range(16)]
+        subtitles = [f"A{t_attn[j]} gt:({gtl_str[j]}, {gtr_str[j]}), p:({pl_str[j]}, {pr_str[j]})" for j in range(16)]
 
         n = names[i]
 
         s_attn_imgs = get_attentioned_image(original, s_attn)
 
 
-        fig, axes = plt.subplots(2, 8, figsize=(20, 5))
+        fig, axes = plt.subplots(2, 8, figsize=(20, 5)) # FIXME: SEQ_LEN e göre ayarla
         axes = axes.flatten()
 
-        # for j in range(16):
         for ax, img, subtitle in zip(axes, s_attn_imgs, subtitles):
             ax.imshow(img)
             ax.set_title(subtitle)
@@ -288,7 +281,7 @@ def main(args):
  
 
     model.eval()
-    # with torch.no_grad(): # This causes the hook to not work, It seems fastpath disables the hooks
+    # with torch.no_grad(): # This let fastpath to work, and it seems fastpath disables the hooks
     preds = model(samples.to(device))
     preds = preds.detach().cpu().argmax(axis=-1)
 
