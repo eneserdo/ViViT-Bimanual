@@ -171,29 +171,32 @@ def _get_actions_list(gt_action_json: os.PathLike, act_len: int) -> np.ndarray:
 
 class BimanualDataset(Dataset):
     def __init__(self, args, sample_dict, gt_dict, split: str):
-        
-        # CHECKME: crop, resize, augmentation!
-        if args.use_randaug and split == "train": 
-            self.aug = torchvision.transforms.RandAugment()
-        else:
-            def identity(x):
-                return x
-            self.aug = identity
 
-        if args.model == "hf":
-            self.preprocessor = self.__preprocess_hf
-            self.normalizer = transformers.VivitImageProcessor.from_pretrained("google/vivit-b-16x2-kinetics400")
-        if args.model == "tr":
-            # if args.img_size == 384:
-            #     self.preprocessor = ...
-            # elif args.img_size == 224:
-            #     self.preprocessor = ...
-            self.preprocessor = self.__preprocess_tr
-            
-            # Following throws a warning about aliasing, to solve this, I used partial 
-            # self.normalizer = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms()
-            self.normalizer = partial(torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1.transforms, antialias=True)()
-            
+        if args.model == "b16":
+            img_size = 224
+        elif args.model == "b16se":
+            img_size = 384
+        elif args.model == "h14se":
+            img_size = 518
+        elif args.model == "l16":
+            img_size = 224
+        elif args.model == "l16se":
+            img_size = 512
+
+
+        transforms = [torchvision.transforms.CenterCrop(480),
+                      torchvision.transforms.Resize(img_size, antialias=True)]
+        
+        if args.use_randaug and split == "train": 
+            transforms.append(torchvision.transforms.RandAugment())            
+
+        self.transform_wo_norm = torchvision.transforms.Compose(transforms + [torchvision.transforms.Lambda(lambda x: x.permute(0, 2, 3, 1))])
+        
+        transforms.extend([torchvision.transforms.ConvertImageDtype(torch.float), # [0, 255] -> [0.0, 1.0]
+                           torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                                                            std=[0.229, 0.224, 0.225]) ])
+        
+        self.transform = torchvision.transforms.Compose(transforms)
 
         self.split = split
         # self.test_subject = args.test_subject
@@ -202,23 +205,9 @@ class BimanualDataset(Dataset):
         self.gt_dict = gt_dict
         self.split_len = len(sample_dict)
 
+
     def __len__(self):
         return self.split_len
-    
-    def __preprocess_hf(self, imgs):
-        return self.normalizer(imgs, return_tensors="pt")['pixel_values'].squeeze(0)
-
-    def __preprocess_tr(self, imgs):
-        imgs = torch.stack([torch.from_numpy(img) for img in imgs])
-        imgs = imgs.permute(0, 3, 1, 2)
-        imgs = self.aug(imgs)
-        imgs = self.normalizer(imgs)
-        return imgs
-
-    def _read_img(self, path):
-        img = Image.open(path)
-        img = img.crop((90, 10, 470+90, 480)) # left, top, right, bottom
-        return np.array(img)
 
 
     def __getitem__(self, idx):
@@ -235,16 +224,13 @@ class BimanualDataset(Dataset):
         for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
-
-            # img = np.array(Image.open(path))
-            img = self._read_img(path)
-            
-            # img = torch.tensor(np.array(Image.open(path))).permute()
-            imgs.append(img)
+            imgs.append(F.pil_to_tensor(Image.open(path)))
         
+
         assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
 
-        imgs = self.preprocessor(imgs)
+        imgs = torch.stack(imgs)
+        imgs = self.transform(imgs)
 
         labels = torch.tensor(labels, dtype=torch.long)
 
@@ -252,36 +238,19 @@ class BimanualDataset(Dataset):
 
     def get_original_imgs(self, idx) -> Tuple[List[np.ndarray], torch.Tensor]:
         # This function is identical to __getitem__ but it returns the original images
-        subject, task, take, frame_idx, _ = self.sample_dict[idx]
-        
-        act_list = self.gt_dict[str(subject) + str(task) + str(take)]
 
-        labels = act_list[frame_idx:frame_idx+CLIP_LEN*STRIDE]
-        labels = labels[::STRIDE]
+        subject, task, take, frame_idx, _ = self.sample_dict[idx]
 
 
         imgs = []
         for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
-            
 
-            # img = np.array(Image.open(path))
-            img = self._read_img(path)
-            # img = torch.tensor(np.array(Image.open(path))).permute()
-            imgs.append(img)
-        
-        assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
+            imgs.append(F.pil_to_tensor(Image.open(path)))            
 
-        labels = torch.tensor(labels, dtype=torch.long)
         
-        
-        # This is what normalizer does except normalization :P
-        imgs = torch.stack([torch.from_numpy(img) for img in imgs])
-        imgs = imgs.permute(0, 3, 1, 2)
-        # Why 256? 
-        imgs = F.resize(imgs, 256, interpolation=InterpolationMode.BILINEAR, antialias=True) # it keeps the aspect ratio
-        imgs = F.center_crop(imgs, 224) # [256, 341] -> [224, 224]
-        imgs = imgs.permute(0, 2, 3, 1)
+        imgs = torch.stack(imgs)
+        imgs = self.transform_wo_norm(imgs)
 
         return imgs
 

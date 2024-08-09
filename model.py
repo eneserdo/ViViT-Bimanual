@@ -1,63 +1,61 @@
 import torch
 import torchvision
-import transformers
 
 from dataset import ACTIONS
 
-class FramewiseHead(torch.nn.Module):
-    def __init__(self, num_classes):
-        super(FramewiseHead, self).__init__()
-        self.left_fc = torch.nn.Linear(768, num_classes)
-        self.right_fc = torch.nn.Linear(768, num_classes)
 
-    
-    def forward(self, x):
-        bs = x.size(0)
-        x = x[:, 1:, :] # remove the first token, which is the CLS token
-        x = x.reshape(bs, 16, 14, 14, 768) # FIXME: hardcoded shape
-        x = x.mean(dim=[2, 3])
-        left = self.left_fc(x)
-        right = self.right_fc(x)
-
-        return torch.cat([left, right], dim=0)
-
-# Just to unify the model usage
-class HFViViT(torch.nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.net = transformers.VivitModel.from_pretrained("google/vivit-b-16x2-kinetics400")
-        self.net.pooler = FramewiseHead(len(ACTIONS))
-    
-    def forward(self, x):
-        return self.net(x).pooler_output
-
-
-class MyViViT(torch.nn.Module):
+class CustomizedViViT(torch.nn.Module):
     def __init__(self, args, num_classes, seq_length=32):
-        super(MyViViT, self).__init__()
+        super(CustomizedViViT, self).__init__()
 
         self.stride = 2
         seq_length = seq_length // self.stride
-        # Note that this already includes the positional encoding and class token
-        # if args.img_size == 384:
-        #     self.spatial_model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
-        # elif args.img_size == 224:
 
-        self.spatial_model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1)
+
+        if args.model == "b16":
+            self.spatial_model = torchvision.models.vit_b_16(weights = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1)
+            self.img_size = 224
+            embedding_size = 768
+            # param_count: 86_567_656, token_count: 196
+        
+        elif args.model == "b16se":
+            self.spatial_model = torchvision.models.vit_b_16(weights = torchvision.models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
+            self.img_size = 384
+            embedding_size = 768
+            # param_count: 86_859_496, token_count: 576
+        
+        elif args.model == "h14se":
+            self.spatial_model = torchvision.models.vit_h_14(weights = torchvision.models.ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1)
+            self.img_size = 518
+            embedding_size = 1280
+            # param_count: 633_470_440, token_count: 1369
+        
+        elif args.model == "l16":
+            self.spatial_model = torchvision.models.vit_l_16(weights = torchvision.models.ViT_L_16_Weights.IMAGENET1K_V1)
+            self.img_size = 224
+            embedding_size = 1024
+            # param_count: 304_326_632, token_count: 196
+        
+        elif args.model == "l16se":
+            self.spatial_model = torchvision.models.vit_l_16(weights = torchvision.models.ViT_L_16_Weights.IMAGENET1K_SWAG_E2E_V1)
+            self.img_size = 512
+            embedding_size = 1024
+            # param_count: 305_174_504, token_count: 1024
+
 
         # Reset the head layer
         self.spatial_model.heads = torch.nn.Identity()  # torch.nn.Linear(768, temp_emb_size)
 
 
-        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length, 768).normal_(std=0.02))
+        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length, embedding_size).normal_(std=0.02))
 
         self.temporal_model = torch.nn.TransformerEncoder(
-            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=768, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
+            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=embedding_size, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
             num_layers=args.num_layers
         )
 
-        self.head_left = torch.nn.Linear(768, num_classes)
-        self.head_right = torch.nn.Linear(768, num_classes)
+        self.head_left = torch.nn.Linear(embedding_size, num_classes)
+        self.head_right = torch.nn.Linear(embedding_size, num_classes)
 
     def forward(self, x):
         # To simplify the code, I apply stride=2 in here instead of creating tubelets of size 16x16x2
@@ -82,14 +80,9 @@ class MyViViT(torch.nn.Module):
 
 def make_model(args, device): 
 
-    if args.model == "hf":
-        # From huggingface, model 1 in the paper
-        model = HFViViT(len(ACTIONS)).to(device=device)
-
-
-    elif args.model == "tr":
+    if args.model in ["b16", "b16se", "l16", "l16se", "h14se"]:
         # My ViViT model using the pretrained ViT weights from torch, model 2 in the paper 
-        model = MyViViT(args, len(ACTIONS), seq_length=32).to(device=device)
+        model = CustomizedViViT(args, len(ACTIONS), seq_length=32).to(device=device)
         
     else:
         raise ValueError(f"Unknown model: {args.model}")

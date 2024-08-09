@@ -38,10 +38,8 @@ def arg_parser_base():
 
     # Model
     ap.add_argument("-bs", "--batch_size", type=int, default=1, help="...")
-    ap.add_argument("--model", type=str, default="hf", choices=["hf", "tr"], help="...")
+    ap.add_argument("--model", type=str, default="b16", choices=["b16", "b16se", "l16", "l16se", "h14se"], help="...")
 
-    # if model == "hf"
-    # ap.add_argument("-c", "--model-config", type=str, default="google/vivit-b-16x2-kinetics400")
 
     # if model == "tr"
     ap.add_argument("--nhead", type=int, default=12, help="For temporal encoder")
@@ -102,7 +100,7 @@ def arg_parser_viz_attn():
     ap.add_argument("-vt", "--validation_take", type=int, default=7, choices=[i for i in range(10)], help="...")
 
     # Model
-    ap.add_argument("--model", type=str, default="tr", choices=["hf", "tr"], help="...")
+    ap.add_argument("--model", type=str, default="b16", choices=["b16", "b16se", "l16", "l16se", "h14se"], help="...")
 
     # if model == "tr"
     ap.add_argument("--nhead", type=int, default=12, help="For temporal encoder")
@@ -119,6 +117,8 @@ def arg_parser_viz_attn():
     # Others
     ap.add_argument("--gpu_id", type=int, default=0, help="...")
     ap.add_argument("--seed", type=int, default=34, help="...")
+    ap.add_argument("--discard_ratio", type=float, default=0.9, help="For attention rollout")
+    ap.add_argument("--fuse_method", type=str, default="mean", choices=["mean", "max", "min"], help="For attention rollout")
 
     args = ap.parse_args()
     args.use_randaug = False

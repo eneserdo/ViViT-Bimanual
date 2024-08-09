@@ -233,22 +233,29 @@ def viz_attn(save_dir, spacial_rollout_attn, temporal_rollout_attn, original_ima
         # gtl_str = labels[i][:, 0]
         # gtr_str = labels[i][:, 1]
 
-        subtitles = [f"A{t_attn[j]} gt:({gtl_str[j]}, {gtr_str[j]}), p:({pl_str[j]}, {pr_str[j]})" for j in range(16)]
+        subtitles = [f"A{t_attn[j]} t({gtl_str[j]}, {gtr_str[j]}), p({pl_str[j]}, {pr_str[j]})" for j in range(16)]
 
         n = names[i]
 
         s_attn_imgs = get_attentioned_image(original, s_attn)
 
+        fig_size = np.ceil(np.sqrt(SEQ_LEN)).astype(np.int32)
 
-        fig, axes = plt.subplots(2, 8, figsize=(20, 5)) # FIXME: SEQ_LEN e göre ayarla
+        fig, axes = plt.subplots(fig_size, fig_size, figsize=(fig_size*3, fig_size*3))
         axes = axes.flatten()
 
-        for ax, img, subtitle in zip(axes, s_attn_imgs, subtitles):
+        for idx, (ax, img, subtitle) in enumerate(zip(axes, s_attn_imgs, subtitles)):
+            if idx == selected_frame_idx:
+                # put a frame around the selected frame
+                background = np.ones((img.shape[0]+10, img.shape[1]+10, 3), dtype=np.uint8) * np.array([255, 0, 0])
+                background[5:-5, 5:-5] = img
+                img = background  
+
             ax.imshow(img)
             ax.set_title(subtitle)
             ax.axis("off")
         
-        plt.title(f"Selected frame: {selected_frame_idx}th frame")
+        # plt.title(f"Selected frame: {selected_frame_idx}th frame")
         plt.tight_layout()        
         plt.savefig(opj(save_dir, f"attn_{n}.png"))
         plt.close()
@@ -278,18 +285,21 @@ def main(args):
 
     samples, labels, names, originals = get_sample_batch(args)
     
- 
 
     model.eval()
     # with torch.no_grad(): # This let fastpath to work, and it seems fastpath disables the hooks
-    preds = model(samples.to(device))
-    preds = preds.detach().cpu().argmax(axis=-1)
+    # it may not fit to the memory
+    preds = []
+    for sample in samples:
+        preds.append(model(sample.unsqueeze(0).to(device)).detach().cpu().argmax(axis=-1))
+    
+    preds = torch.cat(preds, dim=0)
 
 
-    spatial_rollout_attn = rollout(ATTENTION["s"], 0.8, "max") # her bir vid için 16 tane ?
+    spatial_rollout_attn = rollout(ATTENTION["s"], args.discard_ratio, args.fuse_method) # her bir vid için 16 tane ?
     # spatial_rollout_attn: [bs*num_frames, num_token, num_token]
 
-    temporal_rollout_attn = rollout(ATTENTION["t"], 0.8, "max", False)
+    temporal_rollout_attn = rollout(ATTENTION["t"], args.discard_ratio, args.fuse_method, False)
     # temporal_rollout_attn: [bs, num_token, num_token]
     viz_attn(save_dir, spatial_rollout_attn, temporal_rollout_attn, originals, preds, labels, names)
     
