@@ -109,7 +109,9 @@ def getAttentionHook(name):
         # # Make sure you set the dropout to 0.0
         # assert torch.allclose(output[0], y, atol=1e-7) # Sometimes it fails due to numerical precision somehow, so set it somethign like 1e-4
 
-        ATTENTION[name[0]].append(attn_reshaped.detach().cpu())
+        s_or_t = name[0]
+        layer = int(name.split("_")[-1])
+        ATTENTION[name[0]][layer].append(attn_reshaped.detach().cpu())
 
         
     return hook
@@ -119,10 +121,12 @@ def set_hooks(model):
     # spatial attention
     for i in range(len(model.spatial_model.encoder.layers)):
         model.spatial_model.encoder.layers[i].self_attention.register_forward_hook(getAttentionHook(f"s_layer_{i}"))
+        ATTENTION["s"].append([])
     
     # temporal attention
     for i in range(len(model.temporal_model.layers)):
         model.temporal_model.layers[i].self_attn.register_forward_hook(getAttentionHook(f"t_layer_{i}"))
+        ATTENTION["t"].append([])
 
 
 def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
@@ -295,6 +299,10 @@ def main(args):
     
     preds = torch.cat(preds, dim=0)
 
+    for i in range(len(ATTENTION["s"])):
+        ATTENTION["s"][i] = torch.cat(ATTENTION["s"][i], dim=0)
+    for i in range(len(ATTENTION["t"])):
+        ATTENTION["t"][i] = torch.cat(ATTENTION["t"][i], dim=0)
 
     spatial_rollout_attn = rollout(ATTENTION["s"], args.discard_ratio, args.fuse_method) # her bir vid için 16 tane ?
     # spatial_rollout_attn: [bs*num_frames, num_token, num_token]
