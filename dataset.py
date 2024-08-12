@@ -20,8 +20,9 @@ from torchvision.transforms import InterpolationMode
 
 DEBUG_MODE = False
 
-STRIDE = 2
-CLIP_LEN = 32
+STRIDE = 3
+CLIP_LEN = 30
+# ViViT will process CLIP_LEN//STRIDE frames at a time
 
 if os.path.exists("/home/cak/enes/"):   
     DATASET_DIR = "/home/cak/enes/bimanual/bimacs_rgbd_data/ds2_bimacs_rgbd_data"
@@ -279,9 +280,11 @@ def make_mappings(args):
 
         # assert len(act_list) == len(frame_list)
 
-        gt_dict[str(subject_int) + str(task_int) + str(take_int)] = act_list
+        gt_dict[str(subject_int) + str(task_int) + str(take_int)] = act_list # must be full fps
 
-        # frame_list = frame_list[::STRIDE]
+        # frame_list = frame_list[::STRIDE] 
+        # No need to downsample here because we did this in preprocess.py
+        
         frame_idx = 0
 
         for frame in frame_list[: -CLIP_LEN + 1]:
