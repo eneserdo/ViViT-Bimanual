@@ -5,11 +5,11 @@ from dataset import ACTIONS
 
 
 class CustomizedViViT(torch.nn.Module):
-    def __init__(self, args, num_classes, seq_length=32):
+    def __init__(self, args, num_classes, input_len=10):
         super(CustomizedViViT, self).__init__()
 
-        self.stride = 2
-        seq_length = seq_length // self.stride
+        # self.stride = 2
+        # seq_length = seq_length // self.stride
 
 
         if args.model == "b16":
@@ -47,7 +47,7 @@ class CustomizedViViT(torch.nn.Module):
         self.spatial_model.heads = torch.nn.Identity()  # torch.nn.Linear(768, temp_emb_size)
 
 
-        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, seq_length, embedding_size).normal_(std=0.02))
+        self.temp_positional_encoding = torch.nn.Parameter(torch.empty(1, input_len, embedding_size).normal_(std=0.02))
 
         self.temporal_model = torch.nn.TransformerEncoder(
             encoder_layer=torch.nn.TransformerEncoderLayer(d_model=embedding_size, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
@@ -58,8 +58,11 @@ class CustomizedViViT(torch.nn.Module):
         self.head_right = torch.nn.Linear(embedding_size, num_classes)
 
     def forward(self, x):
-        # To simplify the code, I apply stride=2 in here instead of creating tubelets of size 16x16x2
-        x = x[:, ::self.stride] 
+        # No need to apply stride in here we already applied it in the dataset. 
+        # In the original paper, they both use stride 2 and tubelet size of 16x16x2 and 
+        # use central frame inflation which means they practically use stride 4.
+
+        # x = x[:, ::self.stride] 
         
         bs, n_frames, c, h, w = x.size()
         x = x.reshape(bs * n_frames, c, h, w)
@@ -82,7 +85,7 @@ def make_model(args, device):
 
     if args.model in ["b16", "b16se", "l16", "l16se", "h14se"]:
         # My ViViT model using the pretrained ViT weights from torch, model 2 in the paper 
-        model = CustomizedViViT(args, len(ACTIONS), seq_length=32).to(device=device)
+        model = CustomizedViViT(args, len(ACTIONS), input_len=10).to(device=device)
         
     else:
         raise ValueError(f"Unknown model: {args.model}")
