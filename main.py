@@ -47,8 +47,8 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
     
     loss_cumulative = 0
 
-    metrics = Metrics(args, len(ACTIONS), 32, device, gt_dict, sample_dict, mode)
-    
+    metrics = Metrics(args, len(ACTIONS), device, gt_dict, sample_dict, mode)
+    log_step = 0
 
     for imgs, labels, idx in loader:
         step += 1
@@ -57,18 +57,16 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         imgs = imgs.to(device)
         # imgs = imgs.half() # FIXME: half()
         labels = labels.to(device)
-        # labels.shape: [batch_size, 32, 2]
-        
-        # bc ViViT processes tokens as 16x16x2 tubelets. So, temporal precision is halved during the training. 
-        # But, to calculate the metrics, we will upsample the predictions to the original temporal resolution. 
-        labels = labels[:, ::2, :] # FIXME: Hardcoded 2
-        # labels.shape: [batch_size, 16, 2]
+
+        # in_len=CLIP_LEN//STRIDE
+
+        # labels.shape: [batch_size, in_len, 2]
         
         labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
-        # labels.shape: [batch_size*2, 16] LLL...RRR...
+        # labels.shape: [batch_size*2, in_len] LLL...RRR...
 
         labels_flattened = labels.reshape(-1) #.flatten() 
-        # labels_flattened.shape: [batch_size*2, 16] -> [batch_size*2*16]
+        # labels_flattened.shape: [batch_size*2, in_len] -> [batch_size*2*in_len]
 
         with torch.cuda.amp.autocast(dtype=torch.float16, enabled=not args.no_amp):
             pred = model(imgs)
@@ -102,8 +100,10 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
         num_of_log_per_epoch = 4
+        
         if step % (len(loader)//num_of_log_per_epoch) == 0:
-            print(f"{mode} E{epoch:03d} {step%len(loader):03d}/{len(loader)}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
+            print(f"{mode} E{epoch:03d} {log_step%num_of_log_per_epoch + 1}/{num_of_log_per_epoch}: f1t1 {step_f1_top1:.4f} - f1t3 {step_f1_top3:.4f} - L {loss.item():.4f}", flush=True) 
+            log_step += 1
 
         # if mode != "test":
         #     wandb.log({f"{mode}/batch": {'top1_F1': step_f1_top1, 'top3_F1': step_f1_top3, "Loss": loss.item()}, 'batch': step})

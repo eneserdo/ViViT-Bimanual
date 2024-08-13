@@ -29,7 +29,7 @@ if os.path.exists("/home/cak/enes/"):
     GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[CAK]")
 elif os.path.exists("/home/stannis/enes/"):
-    DATASET_DIR = "/home/stannis/enes/bimanual/ds2_bimacs_rgbd_data"
+    DATASET_DIR = "/home/stannis/enes/bimanual/ds3_bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[STANNIS]")
 elif os.path.exists("/YEREL/ds2_bimacs_rgbd_data"):
@@ -217,18 +217,18 @@ class BimanualDataset(Dataset):
         
         act_list = self.gt_dict[str(subject) + str(task) + str(take)]
 
-        labels = act_list[frame_idx:frame_idx+CLIP_LEN*STRIDE]
+        labels = act_list[frame_idx:frame_idx+CLIP_LEN]
         labels = labels[::STRIDE]
 
 
         imgs = []
-        for f in range(frame_idx, frame_idx + CLIP_LEN*STRIDE, STRIDE): # 0, 2, 4 ... 62
+        for f in range(frame_idx, frame_idx + CLIP_LEN, STRIDE): # 0, 2, 4 ... if STRIDE=2
             path = f"{DATASET_DIR}/subject_{subject}/{TASKS[task-1]}/take_{take}/rgb/chunk_{f//100}/frame_{f}.png"
             
             imgs.append(F.pil_to_tensor(Image.open(path)))
         
 
-        assert len(imgs) == CLIP_LEN == len(labels), f"{len(imgs)}, {CLIP_LEN}, {len(labels)}"
+        assert len(imgs) == CLIP_LEN//STRIDE == len(labels), f"{len(imgs)}, {CLIP_LEN//STRIDE}, {len(labels)}"
 
         imgs = torch.stack(imgs)
         imgs = self.transform(imgs)
@@ -255,7 +255,7 @@ class BimanualDataset(Dataset):
 
         return imgs
 
-def make_mappings(args):
+def make_mappings():
     # saves a dict for sample_idx -> img path, img idx
     # saves a dict for vid_idx -> action list
 
@@ -287,7 +287,7 @@ def make_mappings(args):
         
         frame_idx = 0
 
-        for frame in frame_list[: -CLIP_LEN + 1]:
+        for frame in frame_list[: -CLIP_LEN//STRIDE + 1]:
             assert frame.split("_")[-1][:-4] == str(frame_idx), f"{frame.split('_')[-1][:-4]} != {frame_idx}, vid: {subject_int} {task_int} {take_int}"
 
             sample_dict_master[sample_idx] = (
@@ -345,7 +345,7 @@ def get_bimanual_dataset_splits(args) -> Tuple[Dataset, Dataset, Dataset]:
     if not all([os.path.exists(f) for f in files_to_check]):
         print("Creating mappings...")
 
-        make_mappings(args)
+        make_mappings()
         for i in range(1, 7):
             make_fold_mappings(i, args.validation_take)
     else:
@@ -362,3 +362,12 @@ def get_bimanual_dataset_splits(args) -> Tuple[Dataset, Dataset, Dataset]:
     val_set = BimanualDataset(args, sample_dict_fold["val"], gt_dict, "val")
 
     return train_set, test_set, val_set
+
+if "__main__" == __name__:
+    from collections import namedtuple
+    
+    args = namedtuple("args", ["model", "use_randaug", "validation_take", "test_subject"])("b16", False, 7, 1)
+
+    train_set, test_set, val_set = get_bimanual_dataset_splits(args)
+    
+    print(len(train_set), len(test_set), len(val_set))

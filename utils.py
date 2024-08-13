@@ -18,7 +18,7 @@ from torchmetrics.classification import (MulticlassConfusionMatrix,
 
 from scipy.optimize import linear_sum_assignment
 
-from dataset import ACTIONS, STRIDE
+from dataset import ACTIONS, STRIDE, CLIP_LEN
 # from metrics import f1_at_k_single_example
 # from visualization_utils import (plot_segmentation, plot_segmentation_partial,
 #                                  plot_segmentation_v2)
@@ -620,8 +620,10 @@ def majority_voting(arr, total_len, buffer_len, weighted):
 def combine_predictions(all_arr, idx, sub_arr, mapping):
     # first half of sub_arr is for left hand, second half is for right hand
     
-    sub_arr = sub_arr.repeat(2, axis=1) # upsample, bc we have a tubelet shape of 16x16x2 (h, w, t) 
-
+    # sub_arr = sub_arr.repeat(STRIDE, axis=1) 
+    in_len = CLIP_LEN // STRIDE
+    assert sub_arr.shape[1] == in_len, f"{sub_arr.shape[1]} != {in_len}"
+    
     double_bs = sub_arr.shape[0]
     assert 2*len(idx) == double_bs, f"2*idx and sub_arr must have same shape: {2*len(idx)} != {double_bs}"
 
@@ -634,11 +636,10 @@ def combine_predictions(all_arr, idx, sub_arr, mapping):
 
             subject, task, take, start_frame, act = mapping[i]
 
-            # end frame exclusive i.e. [start_frame, end_frame)
             start_frame = start_frame // STRIDE
-            temp_len = 32 # FIXME: hardcoded
 
-            all_arr[f"{subject}{task}{take}{hand}"][temp_len * start_frame : temp_len * (1+start_frame)] = p
+            assert np.all(all_arr[f"{subject}{task}{take}{hand}"][in_len * start_frame : in_len * (1+start_frame)] == -1), "all_arr must be empty before filling"
+            all_arr[f"{subject}{task}{take}{hand}"][in_len * start_frame : in_len * (1+start_frame)] = p
     
     return all_arr
 
@@ -672,20 +673,27 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
         y_pred__R, conf_R = majority_voting(y_pred_R_all, total_len=y_true_R[::STRIDE].shape[0], buffer_len=temporal_length, weighted=weighted_mv)
         
 
-        y_pred__L = y_pred__L.repeat(2, axis=0) # upsample
-        y_pred__R = y_pred__R.repeat(2, axis=0) # upsample
+        y_pred__L = y_pred__L.repeat(STRIDE, axis=0) # upsample
+        y_pred__R = y_pred__R.repeat(STRIDE, axis=0) # upsample
 
         if len(y_true_L) - len(y_pred__L) == 0:
             pass
-        elif len(y_true_L) - len(y_pred__L) == 1:
-            y_true_L = y_true_L[:-1]
-            y_true_R = y_true_R[:-1]
-        elif len(y_pred__L) - len(y_true_L) == 1:
-            y_pred__L = y_pred__L[:-1]
-            y_pred__R = y_pred__R[:-1]
+        elif abs(len(y_true_L) - len(y_pred__L)) < STRIDE:
+            min_len = min(len(y_true_L), len(y_pred__L))
+
+            y_true_L = y_true_L[:min_len]
+            y_true_R = y_true_R[:min_len]
+            y_pred__L = y_pred__L[:min_len]
+            y_pred__R = y_pred__R[:min_len]
+        # elif len(y_true_L) - len(y_pred__L) <= STRIDE:
+        #     y_true_L = y_true_L[:-1]
+        #     y_true_R = y_true_R[:-1]
+        # elif len(y_pred__L) - len(y_true_L) <= STRIDE:
+        #     y_pred__L = y_pred__L[:-1]
+        #     y_pred__R = y_pred__R[:-1]
         else:
             print("#########")
-            print("######### Lengths must be equal or one less", len(y_true_L), len(y_pred__L), video_id)
+            print("######### Lengths must be equal or STRIDE less", len(y_true_L), len(y_pred__L), video_id)
             continue
         
         # Notice that the convention is (y_true, y_pred)
@@ -819,15 +827,16 @@ def get_loss_weights(weighted_loss_type, distribution):
 
 
 class Metrics:
-    def __init__(self, args, num_classes, temp_len, device, gt_dict, sample_dict, mode) -> None:
+    def __init__(self, args, num_classes, device, gt_dict, sample_dict, mode) -> None:
         
         self.gt_dict = gt_dict
         self.sample_dict = sample_dict
         self.mode = mode
-        self.temp_len = temp_len
         self.weighted_mv = args.weighted_mv 
+
+        self.in_len = CLIP_LEN // STRIDE
         
-        assert temp_len == 32, f"temp_len must be 32, but it is {temp_len}"
+        # assert temp_len == 32, f"temp_len must be 32, but it is {temp_len}"
 
 
         # Window-based
@@ -836,8 +845,8 @@ class Metrics:
 
         
         # Window-location-sensitive
-        self.win_f1_calc_top1 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.temp_len//2)]
-        self.win_f1_calc_top3 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.temp_len//2)]
+        self.win_f1_calc_top1 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.in_len)]
+        self.win_f1_calc_top3 = [MulticlassF1Score(num_classes=num_classes, top_k=1, average="macro").to(device) for _ in range(self.in_len)]
 
 
         # filter gt_dict
@@ -845,8 +854,8 @@ class Metrics:
         # After majority voting
         # Dictionaries to store predictions for each sample
         # We will also calculate F1 and CM after MV
-        self.all_predictions_combined_top1 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.temp_len + 1) * self.temp_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
-        self.all_predictions_combined_top3 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.temp_len + 1) * self.temp_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
+        self.all_predictions_combined_top1 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.in_len + 1) * self.in_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
+        self.all_predictions_combined_top3 = {vid + hand: - np.ones((act[::STRIDE].shape[0] - self.in_len + 1) * self.in_len) for vid, act in gt_dict[mode].items() for hand in ["L", "R"]}
         
 
     def update(self, pred, gt, idxes):
@@ -871,11 +880,11 @@ class Metrics:
         step_f1_top3 = self.f1_top3(pred_top_3, gt_flattened)
 
 
-        pred_top_1_unf = pred_top_1.unflatten(0, (-1, self.temp_len//2)).cpu().numpy()
-        pred_top_3_unf = pred_top_3.unflatten(0, (-1, self.temp_len//2)).cpu().numpy()
+        pred_top_1_unf = pred_top_1.unflatten(0, (-1, CLIP_LEN//STRIDE)).cpu().numpy()
+        pred_top_3_unf = pred_top_3.unflatten(0, (-1, CLIP_LEN//STRIDE)).cpu().numpy()
 
         # Window-location-sensitive metrics
-        for i in range(self.temp_len//2):
+        for i in range(CLIP_LEN//STRIDE):
             self.win_f1_calc_top1[i](pred[:, i], gt[:, i])
             self.win_f1_calc_top3[i](pred[:, i], gt[:, i])
 
@@ -892,14 +901,14 @@ class Metrics:
         f1_at_10, f1_at_25, f1_at_50, f1_top1_mv, cm_top1_mv = calc_metrics_at_once(self.all_predictions_combined_top1, 
                                                                                     self.gt_dict[self.mode], 
                                                                                     num_classes=len(ACTIONS), 
-                                                                                    temporal_length=self.temp_len,
+                                                                                    temporal_length=self.in_len,
                                                                                     weighted_mv=self.weighted_mv,
                                                                                     save_dir= None) # self.seg_save_dir
 
         _, _, _, f1_top3_mv, cm_top3_mv = calc_metrics_at_once(self.all_predictions_combined_top3, 
                                                                self.gt_dict[self.mode], 
                                                                num_classes=len(ACTIONS), 
-                                                               temporal_length=self.temp_len,
+                                                               temporal_length=self.in_len,
                                                                weighted_mv=self.weighted_mv,
                                                                save_dir=None)
 
