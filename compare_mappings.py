@@ -31,14 +31,18 @@ def check_mappings(mapping_b, mapping_g, path_mapping, fold):
         print(f"{fold}-{mode} is ok")
 
 
-for fold in range(1, 7):
-    with open(f"data/sample_dict_fold{fold}.pickle", "rb") as f:
-        mapping_b = pickle.load(f)
 
-    with open(f"{map_dir}/dataset_mapping_fold{fold}.pickle", "rb") as f:
-        mapping_g = pickle.load(f)
 
-    with open(f"{map_dir}/path_mapping_fold{fold}.pickle", "rb") as f:
-        path_mapping = pickle.load(f)
+# for fold in range(1, 7):
+#     with open(f"data/sample_dict_fold{fold}.pickle", "rb") as f:
+#         mapping_b = pickle.load(f)
 
-    check_mappings(mapping_b, mapping_g, path_mapping, fold)
+#     with open(f"{map_dir}/dataset_mapping_fold{fold}.pickle", "rb") as f:
+#         mapping_g = pickle.load(f)
+
+#     with open(f"{map_dir}/path_mapping_fold{fold}.pickle", "rb") as f:
+#         path_mapping = pickle.load(f)
+
+#     check_mappings(mapping_b, mapping_g, path_mapping, fold)
+
+
