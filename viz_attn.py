@@ -13,7 +13,7 @@ import torch
 import cv2
 
 from model import make_model
-from dataset import get_bimanual_dataset_splits, ACTIONS
+from dataset import CLIP_LEN, STRIDE, get_bimanual_dataset_splits, ACTIONS
 from utils import arg_parser_viz_attn as arg_parser
 
 torch.backends.cudnn.deterministic = True
@@ -25,11 +25,11 @@ matplotlib.use('Agg')
 # To check for NaNs in the gradients
 torch.autograd.set_detect_anomaly(True)
 
-SEQ_LEN = 16
+SEQ_LEN = CLIP_LEN//STRIDE
 # TRAIN_SUBSET = [150, 500, 1500]
 # VAL_SUBSET = [50, 100, 200]
-TRAIN_SUBSET = [150]
-TEST_SUBSET = [50]
+TRAIN_SUBSET = [860, 875, 890, 905]
+TEST_SUBSET = [340, 355, 370, 385]
 
 def get_sample_batch(args):
     
@@ -42,8 +42,8 @@ def get_sample_batch(args):
 
     for i in TRAIN_SUBSET:
         samples.append(train_set[i][0]) # bu zaten ds oluyor modelin içinde
-        original.append(train_set.get_original_imgs(i)[::2]) # Downsample
-        labels.append(train_set[i][1][::2])
+        original.append(train_set.get_original_imgs(i))
+        labels.append(train_set[i][1])
 
         sb, task, take, fr, act = sample_dict["train"][i]
         names.append(f"{sb}{task}{take}_{fr}")
@@ -51,8 +51,8 @@ def get_sample_batch(args):
 
     for i in TEST_SUBSET:
         samples.append(test_set[i][0]) 
-        labels.append(test_set[i][1][::2])
-        original.append(test_set.get_original_imgs(i)[::2])
+        labels.append(test_set[i][1])
+        original.append(test_set.get_original_imgs(i))
 
         sb, task, take, fr, act = sample_dict["test"][i]
         names.append(f"{sb}{task}{take}_{fr}")
@@ -133,8 +133,7 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
     # attentions: [A_l1, A_l2, ..., A_ln]
     # A_li: [bs, num_heads, num_token, num_token] 
     bs, _, num_token = attentions[0].shape[:3]
-    device = attentions[0].device
-    result = torch.eye(num_token).to(device)
+    result = torch.eye(num_token)
 
     with torch.no_grad():
         for attention in attentions:
@@ -163,7 +162,7 @@ def rollout(attentions, discard_ratio, head_fusion, has_cls_token=True):
                 flat[row_indices, indices] = 0
 
 
-            Identity = torch.eye(attention_heads_fused.size(-1)).to(device)
+            Identity = torch.eye(attention_heads_fused.size(-1))
             a = (attention_heads_fused + 1.0*Identity)/2
             a = a / a.sum(dim=-1, keepdim=True)
 
@@ -208,12 +207,12 @@ def viz_attn(save_dir, spacial_rollout_attn, temporal_rollout_attn, original_ima
     # There are 2N samples (N train, N test), save each of them separately
     # For each sample, there are 16 frames
     # There is two hand for each hand
-    selected_frame_idx = 8
+    selected_frame_idx = SEQ_LEN // 2
     bs_sl, num_tokens, _ = spacial_rollout_attn.shape # [bs*num_frames, num_token, num_token] 
     bs = bs_sl // SEQ_LEN
     spacial_rollout_attn = spacial_rollout_attn.reshape(bs, SEQ_LEN, num_tokens, num_tokens)
 
-    pred_left, pred_right = torch.split(preds, 2, dim=0)
+    pred_left, pred_right = torch.split(preds, bs, dim=0)
     
 
     for i in range(len(names)): # for each sample in the batch
@@ -237,7 +236,7 @@ def viz_attn(save_dir, spacial_rollout_attn, temporal_rollout_attn, original_ima
         # gtl_str = labels[i][:, 0]
         # gtr_str = labels[i][:, 1]
 
-        subtitles = [f"A{t_attn[j]} t({gtl_str[j]}, {gtr_str[j]}), p({pl_str[j]}, {pr_str[j]})" for j in range(16)]
+        subtitles = [f"A{t_attn[j]} t({gtl_str[j]}, {gtr_str[j]}), p({pl_str[j]}, {pr_str[j]})" for j in range(SEQ_LEN)]
 
         n = names[i]
 
