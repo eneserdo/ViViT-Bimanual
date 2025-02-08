@@ -29,7 +29,7 @@ if os.path.exists("/home/cak/enes/"):
     GT_DIR = "/home/cak/enes/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[CAK]")
 elif os.path.exists("/home/stannis/enes/"):
-    DATASET_DIR = "/home/stannis/enes/bimanual/ds3_bimacs_rgbd_data"
+    DATASET_DIR = "/home/stannis/enes/bimanual/downloads/ds3_bimacs_rgbd_data"
     GT_DIR = "/home/stannis/Online-Action-Prediction-from-Scene-Graphs/raw/bimacs_rgbd_data_ground_truth"
     print("[STANNIS]")
 elif os.path.exists("/YEREL/ds2_bimacs_rgbd_data"):
