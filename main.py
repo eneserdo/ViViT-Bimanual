@@ -63,9 +63,12 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
         # in_len=CLIP_LEN//STRIDE
 
         # labels.shape: [batch_size, in_len, 2]
-        
-        labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
-        # labels.shape: [batch_size*2, in_len] LLL...RRR...
+        if args.combined_pred:
+            # label = left + right * num_classes
+            labels = labels[:, :, 0] + labels[:, :, 1] * len(ACTIONS)
+        else:
+            labels = torch.cat([labels[:, :, 0], labels[:, :, 1]], dim=0)
+            # labels.shape: [batch_size*2, in_len] LLL...RRR...
 
         labels_flattened = labels.reshape(-1) #.flatten() 
         # labels_flattened.shape: [batch_size*2, in_len] -> [batch_size*2*in_len]
@@ -98,6 +101,18 @@ def run_one_epoch(model: torch.nn.Module, loader: DataLoader, mode: str, epoch: 
             raise NotImplementedError("save_individual may be broken due to global idx, please check it")
             # VIP.pick_samples(y_true=gt_reordered.cpu().argmax(2), y_pred=pred.detach().cpu(), idx=idxes, epoch=epoch, mode=mode)
 
+        if args.combined_pred:
+            # reshape pred and labels
+            labels_left = labels % len(ACTIONS)
+            labels_right = labels // len(ACTIONS)
+            labels = torch.cat([labels_left, labels_right], dim=0)
+
+            pred = pred.reshape(pred.shape[0], pred.shape[1], len(ACTIONS), len(ACTIONS)).detach()
+
+            pred_left = pred.sum(dim=-1)
+            pred_right = pred.sum(dim=-2)
+
+            pred = torch.cat([pred_left, pred_right], dim=0)            
 
         step_f1_top1, step_f1_top3 = metrics.update(pred.detach(), labels, idx)
 
@@ -230,24 +245,27 @@ if __name__ == "__main__":
     wandb.define_metric("val/confusion_matrix*", step_metric="epoch")
     wandb.define_metric("test/confusion_matrix*", step_metric="epoch")
 
-    if args.model == "tr" and args.base_lr is not None:
+    if args.combined_pred:
         model_params = [
-            {"params": model.spatial_model.parameters(), "lr": args.base_lr},
-            {"params": model.temp_positional_encoding},
-            {"params": model.temporal_model.parameters()},
-            {"params": model.head_left.parameters()},
-            {"params": model.head_right.parameters()}
+            {"params": model.spatial_model.parameters(), "lr": args.spatial_lr},
+            {"params": model.temporal_model.parameters(), "lr": args.temporal_lr},
+            {"params": model.head.parameters(), "lr": args.head_lr},
         ]
     else:
-        model_params = model.parameters()
+        model_params = [
+            {"params": model.spatial_model.parameters(), "lr": args.spatial_lr},
+            {"params": model.temporal_model.parameters(), "lr": args.temporal_lr},
+            {"params": model.head_left.parameters(), "lr": args.head_lr},
+            {"params": model.head_right.parameters(), "lr": args.head_lr},
+        ]
+
 
     if args.optimizer_type == 'SGD':
-        optimizer = torch.optim.SGD(model_params, lr=args.learning_rate, momentum=args.momentum,
+        optimizer = torch.optim.SGD(model_params, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov = args.nesterov)
     else:
         print("args.momentum is ignored. It is only used for SGD.")
-        optimizer = getattr(torch.optim, args.optimizer_type)(model_params, lr=args.learning_rate,
-                                                              weight_decay=args.weight_decay)
+        optimizer = getattr(torch.optim, args.optimizer_type)(model_params, weight_decay=args.weight_decay)
 
 
     if args.scheduler_step_size != -1:

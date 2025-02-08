@@ -37,19 +37,23 @@ def arg_parser_base():
 
     # Model
     ap.add_argument("-bs", "--batch_size", type=int, default=1, help="...")
-    ap.add_argument("--model", type=str, default="b16", choices=["b16", "b16se", "l16", "l16se", "h14se"], help="...")
+    ap.add_argument("--model", type=str, default="b16se", choices=["b16", "b16se", "l16", "l16se", "h14se"], help="...")
 
-
-    # if model == "tr"
     ap.add_argument("--nhead", type=int, default=12, help="For temporal encoder")
     ap.add_argument("--dim_feedforward", type=int, default=3072, help="For temporal encoder")
     ap.add_argument("--num_layers", type=int, default=12, help="For temporal encoder")
+    
+    ap.add_argument("-cp", "--combined_pred", action="store_true", help="Use combined predictions")
     
     # Optimizer
     ap.add_argument("-o", "--optimizer_type", type=str,
                     choices=["Adam", "AdamW", "NAdam", "RMSprop", "SGD"],
                     help="Type of optimizer to be used  from torch.optim", default='SGD')
-    ap.add_argument("-lr", "--learning_rate", type=float, default=0.01, help="...")
+
+    ap.add_argument("-sp_lr", "--spatial_lr", type=float, default=0.0005, help="...")
+    ap.add_argument("-te_lr", "--temporal_lr", type=float, default=0.001, help="...")
+    ap.add_argument("-hl_lr", "--head_lr", type=float, default=None, help="If None, then it is same as temporal learning rate")
+
     ap.add_argument("-mn", "--momentum", type=float, default=0.9, help="...")
     ap.add_argument("-wd", "--weight_decay", type=float, default=0, help="...")
     ap.add_argument("--scheduler_step_size", type=int, default=-1, help="...")
@@ -62,7 +66,6 @@ def arg_parser_base():
     ap.add_argument("--clip", type=float, default=-1, help="Gradient clipping")
     ap.add_argument("--no_amp", action="store_true", help="Disable automatic mixed precision")
     ap.add_argument("--num_workers", type=int, default=2, help="Number of workers for dataloader")
-    ap.add_argument("--base_lr", type=float, default=None, help="...")
     ap.add_argument("--nesterov", action="store_true", help="Use nesterov momentum in SGD")
 
 
@@ -977,8 +980,9 @@ def validate_args(args):
     if args.nesterov:
         assert args.optimizer_type == "SGD", "nesterov is only for SGD"
 
-    if args.model != "tr":
-        assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
+    if args.head_lr is None:
+        args.head_lr = args.temporal_lr
+        print(f"Head learning rate is not set, using temporal learning rate: {args.head_lr}")
 
     previous_models = os.listdir("saved_models")
     if args.name in previous_models and args.name != "debug" and args.num_epochs != 0:
