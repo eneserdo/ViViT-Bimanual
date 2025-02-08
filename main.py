@@ -5,16 +5,18 @@ import random
 import time
 from os.path import join as opj
 
-import matplotlib.pyplot as pyplot
 import matplotlib
+import matplotlib.pyplot as pyplot
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
 import wandb
-from dataset import (ACTIONS, get_bimanual_dataset_splits)
+from dataset import ACTIONS, get_bimanual_dataset_splits
 from model import make_model
-from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights, get_minutes, metrics_to_str, seed_worker, validate_args, wandb_logging)
+from utils import (Metrics, VisIndividualPreds, arg_parser, get_loss_weights,
+                   get_minutes, metrics_to_str, seed_worker, validate_args,
+                   wandb_logging)
 
 # from torch_geometric.explain import Explainer, AttentionExplainer, ModelConfig
 

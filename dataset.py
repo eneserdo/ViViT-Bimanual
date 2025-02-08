@@ -1,19 +1,19 @@
-from functools import partial
 import glob
 import json
 import os
 import pickle
+from functools import partial
 from os.path import join as opj
 from typing import Callable, List, Tuple
 
 import natsort
 import numpy as np
 import torch
-from PIL import Image
-from torch.utils.data import Dataset
-import transformers
 import torchvision
 import torchvision.transforms.functional as F
+import transformers
+from PIL import Image
+from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 
 # Global variables

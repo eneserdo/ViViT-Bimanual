@@ -12,13 +12,12 @@ import natsort
 import numpy as np
 import seaborn as sns
 import torch
+from scipy.optimize import linear_sum_assignment
 from torchmetrics.classification import (MulticlassConfusionMatrix,
                                          MulticlassF1Score)
 
+from dataset import ACTIONS, CLIP_LEN, STRIDE
 
-from scipy.optimize import linear_sum_assignment
-
-from dataset import ACTIONS, STRIDE, CLIP_LEN
 # from metrics import f1_at_k_single_example
 # from visualization_utils import (plot_segmentation, plot_segmentation_partial,
 #                                  plot_segmentation_v2)
@@ -982,7 +981,7 @@ def validate_args(args):
         assert args.base_lr is not None, "Base learning rate is available used for ViViT model 2"
 
     previous_models = os.listdir("saved_models")
-    if args.name in previous_models and args.name != "debug":
+    if args.name in previous_models and args.name != "debug" and args.num_epochs != 0:
         raise ValueError(f"Model name {args.name} already exists in saved_models directory")
 
     assert torch.cuda.is_available(), "No CUDA?"
