@@ -102,7 +102,7 @@ class CustomizedViViT(torch.nn.Module):
         self.temp_positional_encoding = PositionalEncoding(embedding_size)
 
         self.temporal_model = torch.nn.TransformerEncoder(
-            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=embedding_size, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True),
+            encoder_layer=torch.nn.TransformerEncoderLayer(d_model=embedding_size, nhead=args.nhead, dim_feedforward=args.dim_feedforward, batch_first=True, dropout=args.dropout),
             num_layers=args.num_layers
         )
         if self.combined_pred:

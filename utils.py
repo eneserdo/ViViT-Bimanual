@@ -68,6 +68,7 @@ def arg_parser_base():
     ap.add_argument("--num_workers", type=int, default=2, help="Number of workers for dataloader")
     ap.add_argument("--nesterov", action="store_true", help="Use nesterov momentum in SGD")
 
+    ap.add_argument("--dropout", type=float, default=0.1, help="...")
 
 
     # Metrics
