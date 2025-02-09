@@ -313,11 +313,11 @@ if __name__ == "__main__":
     for epoch in range(args.num_epochs):
         start = time.perf_counter()
 
-        train_metrics, _ = run_one_epoch(model, train_loader, 'train', epoch)
-        wandb_logging(wandb, train_metrics, epoch, "train")
+        train_metrics, train_loss = run_one_epoch(model, train_loader, 'train', epoch)
+        wandb_logging(wandb, train_metrics, train_loss, epoch, "train")
         
         val_metrics, val_loss = run_one_epoch(model, val_loader, 'val', epoch)
-        wandb_logging(wandb, val_metrics, epoch, "val")
+        wandb_logging(wandb, val_metrics, val_loss, epoch, "val")
 
         # Save model
         if epoch % args.saving_freq == 0 or epoch ==  args.num_epochs - 1:
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     if test_metrics is None:
         print("[WARN] No weights found to test")
     else:
-        wandb_logging(wandb, test_metrics, epoch, "test")
+        wandb_logging(wandb, test_metrics, 0, epoch, "test")
     
     wandb.finish()
     
