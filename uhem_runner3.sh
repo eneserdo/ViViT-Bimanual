@@ -5,10 +5,10 @@
 #SBATCH -n 64
 #SBATCH --mail-type=END,FAIL                     # is bitince yada sorun cikarsa mail at
 #SBATCH --mail-user=erdogane16@itu.edu.tr        # mail atilacak adres
-#SBATCH -o f18_28dr.out      
-#SBATCH -e f18_28dr.err
+#SBATCH -o F28_S5_SGDN_lr2_wd.out      
+#SBATCH -e F28_S5_SGDN_lr2_wd.err
 #SBATCH --gres=gpu:1
-#SBATCH -J f18_28dr
+#SBATCH -J F28_S5_SGDN_lr2_wd
 
 # Data ve kodu kopyala
 # cp -r /ari/users/eerdogan03/ds2_bimacs_rgbd_data /YEREL
@@ -33,11 +33,13 @@ cd /YEREL/ViViT-Bimanual
 # python main.py -n F_28_S0 --num_workers 4 -o SGD --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 2 --dim_feedforward 2048 --num_epochs 10
 # sleep 5
 
-python main.py -n F28_S0_Adam_DR --num_workers 4 -o Adam --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 2 --dim_feedforward 2048 --num_epochs 10 --dropout 0.25
-sleep 5
+# python main.py -n F28_S0_Adam_DR --num_workers 4 -o Adam --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 2 --dim_feedforward 2048 --num_epochs 10 --dropout 0.25
+# sleep 5
 
+# python main.py -n F18_S0_Adam --num_workers 4 -o Adam --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 1 --dim_feedforward 2048 --num_epochs 10
+# sleep 5
 
-python main.py -n F18_S0_Adam --num_workers 4 -o Adam --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 1 --dim_feedforward 2048 --num_epochs 10
+python main.py -n F28_S5_SGDN_lr2_wd --num_workers 4 -o SGD --spatial_lr 0.0001 --temporal_lr 0.0005 --momentum 0.99 --weight_decay 0.0001 --bs 32 --num_acc 8 --nhead 8 --num_layers 2 --dim_feedforward 2048 --num_epochs 10 --nesterov 
 sleep 5
 
 
