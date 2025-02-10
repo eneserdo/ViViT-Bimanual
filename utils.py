@@ -56,7 +56,7 @@ def arg_parser_base():
 
     ap.add_argument("-mn", "--momentum", type=float, default=0.9, help="...")
     ap.add_argument("-wd", "--weight_decay", type=float, default=0, help="...")
-    ap.add_argument("--scheduler_step_size", type=int, default=-1, help="...")
+    ap.add_argument("--scheduler_step_size", type=int, default=[-1], help="...", nargs='+')
     ap.add_argument("--scheduler_gamma", type=float, default=0.5, help="...")
     ap.add_argument("--weighted_loss", type=str, default="none", choices=["none", "inv", "sqrt_inv", "effective"],
                     help="Use class frequencies as weight for loss function")       # :(

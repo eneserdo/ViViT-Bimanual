@@ -268,12 +268,14 @@ if __name__ == "__main__":
         optimizer = getattr(torch.optim, args.optimizer_type)(model_params, weight_decay=args.weight_decay)
 
 
-    if args.scheduler_step_size != -1:
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.scheduler_step_size,
-                                                    gamma=args.scheduler_gamma, verbose=True)
-        
-    else:
+    if args.scheduler_step_size[0] == -1:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.scheduler_gamma, patience=args.patience, verbose=True)
+    elif len(args.scheduler_step_size) == 1:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.scheduler_step_size[0],
+                                                    gamma=args.scheduler_gamma, verbose=True)
+    else:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.scheduler_step_size,
+                                                        gamma=args.scheduler_gamma, verbose=True)
 
 
     # loss weights can be used to balance the classes using different strategies
