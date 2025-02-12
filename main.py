@@ -163,12 +163,13 @@ def test_for_all_saved_weights(model, test_loader, choose_best_in_terms_of):
     best_i = -1
     for i, w_name in enumerate(weight_list):
         print(f"TESTING {w_name}:")
+        start = time.perf_counter()
         checkpoint = torch.load(w_name)
         model.load_state_dict(checkpoint["model_state_dict"])
         returned_dict, _ = run_one_epoch(model, test_loader, 'test', epoch=int((w_name[-7:-3])))
         cv_list.append(returned_dict)
         
-        print('### TEST: ', metrics_to_str(returned_dict))
+        print('### TEST: ', metrics_to_str(returned_dict), f'Time: {get_minutes(time.perf_counter() - start)}')
 
         results.append(returned_dict)        
         if best_metric < returned_dict[comparison_metric]:
@@ -269,13 +270,13 @@ if __name__ == "__main__":
 
 
     if args.scheduler_step_size[0] == -1:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.scheduler_gamma, patience=args.patience, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.scheduler_gamma, patience=args.patience)
     elif len(args.scheduler_step_size) == 1:
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.scheduler_step_size[0],
-                                                    gamma=args.scheduler_gamma, verbose=True)
+                                                    gamma=args.scheduler_gamma)
     else:
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.scheduler_step_size,
-                                                        gamma=args.scheduler_gamma, verbose=True)
+                                                        gamma=args.scheduler_gamma)
 
 
     # loss weights can be used to balance the classes using different strategies
@@ -329,10 +330,16 @@ if __name__ == "__main__":
                         opj(save_dir, f"model_epoch{epoch:0>4}.pt"))
 
 
-        scheduler.step(val_loss)
+        if args.scheduler_step_size[0] == -1:
+            # ReduceLROnPlateau
+            scheduler.step(val_loss)
+        else:
+            # StepLR, MultiStepLR
+            scheduler.step()
+        
         stop = time.perf_counter()
 
-        print(f'### {epoch:03d}: Time {get_minutes(stop - start)} m ### Train: ', metrics_to_str(train_metrics), ' ### Val: ', metrics_to_str(val_metrics))
+        print(f'### {epoch:03d}: Time {get_minutes(stop - start)} m ### Train: ', metrics_to_str(train_metrics), ' ### Val: ', metrics_to_str(val_metrics), 'LR:', scheduler.get_last_lr())
 
 
     # save the individual predictions

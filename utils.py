@@ -649,10 +649,9 @@ def combine_predictions(all_arr, idx, sub_arr, mapping):
 def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighted_mv, save_dir=None):
     # Applies majority voting, calculates metrics, visualizes and saves the all predictions
     
-    # In mapping there is no mirrored data, since it is redundant
-
     f1_at_k = F1_at_k(num_classes=num_classes)
     f1_classic = MulticlassF1Score(num_classes=num_classes, average='macro')
+    f1_micro = MulticlassF1Score(num_classes=num_classes, average='micro')  # Added micro F1
     conf_mat = MulticlassConfusionMatrix(num_classes=num_classes, normalize="true")
 
         
@@ -707,6 +706,10 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
         # Notice that the convention is (y_pred, y_true)
         f1_classic(torch.tensor(y_pred__L), torch.tensor(y_true_L))
         f1_classic(torch.tensor(y_pred__R), torch.tensor(y_true_R))
+        
+        # Calculate micro F1 score
+        f1_micro(torch.tensor(y_pred__L), torch.tensor(y_true_L))
+        f1_micro(torch.tensor(y_pred__R), torch.tensor(y_true_R))
 
         # Conf mat
         # To ignore warnings about nan values in confusion matrix and functorch's performance drop
@@ -726,12 +729,12 @@ def calc_metrics_at_once(all_arr, mapping, num_classes, temporal_length, weighte
         warnings.filterwarnings('ignore', '.*NaN values found in confusion matrix.*', UserWarning)
         cm = conf_mat.compute().cpu().numpy()
 
-    return *f1_at_k.compute(), f1_classic.compute().item(), cm 
+    return *f1_at_k.compute(), f1_classic.compute().item(), f1_micro.compute().item(), cm 
 
 
 
 def metrics_to_str(metrics):
-    selected=["f1_top1", "f1_top3", "f1_top1_once", "f1_top3_once"] # , "f1@10", "f1@25", "f1@50"
+    selected=["f1_top1", "f1_top1_once", "f1_top3_once", "f1_top1_once_micro"]
     return " ".join([f"{k}: {v:.4f}" for k, v in metrics.items() if k in selected])
     # return " ".join([f"{k}: {v:.4f}" for k, v in metrics.items() if "cm" not in k])
 
@@ -901,19 +904,23 @@ class Metrics:
 
     def compute(self):
 
-        f1_at_10, f1_at_25, f1_at_50, f1_top1_mv, cm_top1_mv = calc_metrics_at_once(self.all_predictions_combined_top1, 
-                                                                                    self.gt_dict[self.mode], 
-                                                                                    num_classes=len(ACTIONS), 
-                                                                                    temporal_length=self.in_len,
-                                                                                    weighted_mv=self.weighted_mv,
-                                                                                    save_dir= None) # self.seg_save_dir
+        f1_at_10, f1_at_25, f1_at_50, f1_top1_mv, f1_top1_mv_micro, cm_top1_mv = calc_metrics_at_once(
+            self.all_predictions_combined_top1, 
+            self.gt_dict[self.mode], 
+            num_classes=len(ACTIONS), 
+            temporal_length=self.in_len,
+            weighted_mv=self.weighted_mv,
+            save_dir=None
+        )
 
-        _, _, _, f1_top3_mv, cm_top3_mv = calc_metrics_at_once(self.all_predictions_combined_top3, 
-                                                               self.gt_dict[self.mode], 
-                                                               num_classes=len(ACTIONS), 
-                                                               temporal_length=self.in_len,
-                                                               weighted_mv=self.weighted_mv,
-                                                               save_dir=None)
+        _, _, _, f1_top3_mv, _, cm_top3_mv = calc_metrics_at_once(
+            self.all_predictions_combined_top3, 
+            self.gt_dict[self.mode], 
+            num_classes=len(ACTIONS), 
+            temporal_length=self.in_len,
+            weighted_mv=self.weighted_mv,
+            save_dir=None
+        )
 
         self.win_f1_calc_top1_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top1]
         self.win_f1_calc_top3_results = [f1_calc.compute().item() for f1_calc in self.win_f1_calc_top3]
@@ -923,6 +930,7 @@ class Metrics:
             "f1_top3": self.f1_top3.compute().item(),
             "f1_top1_once": f1_top1_mv,
             "f1_top3_once": f1_top3_mv,
+            "f1_top1_once_micro": f1_top1_mv_micro,
             "cm_top1_once": cm_top1_mv,
             "cm_top3_once": cm_top3_mv,
             "f1@10": f1_at_10,
@@ -958,6 +966,7 @@ def wandb_logging(wandb, metric_dict, loss, epoch, mode):
                             "f1@50": metric_dict["f1@50"], 
                             "f1_top1_once": metric_dict["f1_top1_once"], 
                             "f1_top3_once": metric_dict["f1_top3_once"],
+                            "f1_top1_once_micro": metric_dict["f1_top1_once_micro"],
                             "f1_top1": metric_dict["f1_top1"],
                             "f1_top3": metric_dict["f1_top3"],
                             "loss" : loss},
