@@ -280,7 +280,8 @@ if __name__ == "__main__":
 
 
     # loss weights can be used to balance the classes using different strategies
-    loss_weights = get_loss_weights(args.weighted_loss, None) # FIXME
+    distribution = torch.load("distribution_fold1.pt")
+    loss_weights = get_loss_weights(args.weighted_loss, distribution) # FIXME
 
     criterion = torch.nn.CrossEntropyLoss(weight=loss_weights, label_smoothing=args.smoothing).to(device=device)
 
