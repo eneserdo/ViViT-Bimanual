@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -A gtat01                # account / proje adi
-#SBATCH -p a100q
+#SBATCH -p gpu2dq
 #SBATCH -N 1
 #SBATCH -n 64
 #SBATCH --mail-type=END,FAIL                     # is bitince yada sorun cikarsa mail at
 #SBATCH --mail-user=erdogane16@itu.edu.tr        # mail atilacak adres
-#SBATCH -o F38_S5_SGDN_dr_wd.out      
-#SBATCH -e F38_S5_SGDN_dr_wd.err
+#SBATCH -o F38_S1_SGDN_RAC_wd2_dr2_lr2_m95.out      
+#SBATCH -e F38_S1_SGDN_RAC_wd2_dr2_lr2_m95.err
 #SBATCH --gres=gpu:1
-#SBATCH -J F38_S5_SGDN_dr_wd
+#SBATCH -J F38_S1_SGDN_RAC_wd2_dr2_lr2_m95
 
 # Data ve kodu kopyala
 # cp -r /ari/users/eerdogan03/ds2_bimacs_rgbd_data /YEREL
@@ -33,7 +33,7 @@ cd /YEREL/ViViT-Bimanual
 # python main.py -n F_28_S0 --num_workers 4 -o SGD --spatial_lr 0 --temporal_lr 0.001 -bs 32 --num_acc 8 --nhead 8 --num_layers 2 --dim_feedforward 2048 --num_epochs 10
 # sleep 5
 
-python main.py -n F38_S5_SGDN_dr_wd --num_workers 4 -o SGD --spatial_lr 0.0001 --temporal_lr 0.0005 -bs 32 --num_acc 8 --nhead 8 --num_layers 3 --dim_feedforward 2048 --num_epochs 10 --nesterov --dropout 0.2 --weight_decay 0.0001
+python main.py -n F38_S1_SGDN_RAC_wd2_dr2_lr2_m95 --num_workers 4 -o SGD --spatial_lr 0.01 --temporal_lr 0.01 -bs 32 --num_acc 8 --nhead 8 --num_layers 3 --dim_feedforward 2048 --num_epochs 11 --nesterov --use_randaug --clip 1 --dropout 0.25 --weight_decay 0.001 --scheduler_step_size 1 2 4 6 --momentum 0.95
 sleep 5
 
 
